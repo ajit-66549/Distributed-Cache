@@ -1,0 +1,19 @@
+# Compiled Go files
+bin/
+*.exe
+*.out
+
+# Testing
+coverage.out
+
+# Environment variables
+.env
+
+# Cache persistence data
+data/
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
