@@ -55,17 +55,16 @@ func (h *Handler) Set(w http.ResponseWriter, r *http.Request) {
 	var request setRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Invalid JSON",
+		})
 		return
 	}
 
 	h.cache.Set(key, request.Value)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"status": "stored",
+	writeJSON(w, http.StatusCreated, statusResponse{
+		Status: "stored",
 	})
 }
 
@@ -77,24 +76,22 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 
 	if key == "" {
-		http.Error(w, `{"error":"key is required"}`, http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "key is required",
+		})
 		return
 	}
 
 	value, found := h.cache.Get(key)
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if !found {
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(getResponse{
+		writeJSON(w, http.StatusNotFound, getResponse{
 			Value: nil,
 		})
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(getResponse{
+	writeJSON(w, http.StatusOK, getResponse{
 		Value: &value,
 	})
 }
@@ -104,18 +101,14 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	deleted := h.cache.Delete(key)
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if !deleted {
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error": "key not found",
+		writeJSON(w, http.StatusNotFound, errorResponse{
+			Error: "key not found",
 		})
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"status": "deleted",
+	writeJSON(w, http.StatusOK, statusResponse{
+		Status: "deleted",
 	})
 }
