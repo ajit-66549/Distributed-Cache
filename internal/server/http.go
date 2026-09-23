@@ -40,6 +40,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/ping", h.Ping)
 	mux.HandleFunc("PUT /v1/cache/{key}", h.Set)
 	mux.HandleFunc("GET /v1/cache/{key}", h.Get)
+	mux.HandleFunc("DELETE /v1/cache/{key}", h.Delete)
 
 	return mux
 }
@@ -95,5 +96,26 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(getResponse{
 		Value: &value,
+	})
+}
+
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+
+	deleted := h.cache.Delete(key)
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if !deleted {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "key not found",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status": "deleted",
 	})
 }
