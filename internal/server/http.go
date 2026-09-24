@@ -56,7 +56,21 @@ func (h *Handler) Set(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Invalid JSON",
+			Error: "invalid JSON",
+		})
+		return
+	}
+
+	if err := validateKey(key); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: err.Error(),
+		})
+		return
+	}
+
+	if err := valueValidate(request.Value); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: err.Error(),
 		})
 		return
 	}
@@ -75,9 +89,9 @@ type getResponse struct {
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 
-	if key == "" {
+	if err := validateKey(key); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "key is required",
+			Error: err.Error(),
 		})
 		return
 	}
@@ -98,6 +112,12 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+
+	if err := validateKey(key); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: err.Error(),
+		})
+	}
 
 	deleted := h.cache.Delete(key)
 
