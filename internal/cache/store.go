@@ -1,6 +1,9 @@
 package cache
 
+import "sync"
+
 type Store struct {
+	mu      sync.RWMutex
 	entries map[string]Entry
 }
 
@@ -11,10 +14,15 @@ func NewStore() *Store {
 }
 
 func (s *Store) Set(key string, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.entries[key] = Entry{Value: value}
 }
 
 func (s *Store) Get(key string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	entry, found := s.entries[key]
 
 	if !found {
@@ -25,6 +33,9 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 func (s *Store) Delete(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	_, found := s.entries[key]
 
 	if !found {
@@ -36,5 +47,8 @@ func (s *Store) Delete(key string) bool {
 }
 
 func (s *Store) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return len(s.entries)
 }
