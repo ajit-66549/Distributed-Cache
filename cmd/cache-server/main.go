@@ -1,12 +1,60 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/ajit-66549/distributed-cache/internal/cache"
 	"github.com/ajit-66549/distributed-cache/internal/config"
+	"github.com/ajit-66549/distributed-cache/internal/server"
 )
+
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 	cfg := config.Load()
-	fmt.Printf("Distributed cache server is starting...%s\n", cfg.Port)
+
+	store := cache.NewStore()
+	handler := server.NewHandler(store)
+
+	address := ":" + cfg.Port
+	httpServer := server.NewHTTPServer(address, handler.Routes())
+
+	go func() {
+		log.Printf("distributed cache server listening on %s", address)
+
+		if err := httpServer.ListenAndServe(); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server failed: %v", err)
+		}
+	}()
+
+	shutdownSignal, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	<-shutdownSignal.Done()
+
+	log.Println("shutdown signal received")
+
+	shutdownContext, cancel := context.WithTimeout(
+		context.Background(),
+		shutdownTimeout,
+	)
+	defer cancel()
+
+	if err := httpServer.Shutdown(shutdownContext); err != nil {
+		log.Fatalf("graceful shutdown failed: %v", err)
+	}
+
+	log.Println("server stopped gracefully")
 }
