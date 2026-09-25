@@ -1,6 +1,9 @@
 package cache
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestSetAndGet(t *testing.T) {
 	store := NewStore()
@@ -112,5 +115,26 @@ func TestLenWithMultipleEntries(t *testing.T) {
 
 	if store.Len() != 2 {
 		t.Errorf("expected store length 2, got %d", store.Len())
+	}
+}
+
+func TestGetExpiredEntry(t *testing.T) {
+	store := NewStore()
+	store.SetWithTTL("name", "Ajit", 10*time.Millisecond)
+
+	time.Sleep(20 * time.Millisecond)
+
+	value, found := store.Get("name")
+
+	if found {
+		t.Fatal("expected expired key to be missing")
+	}
+
+	if value != "" {
+		t.Errorf("expected empty value, got %q", value)
+	}
+
+	if store.Len() != 0 {
+		t.Errorf("expected expired entry to be deleted, got length %d", store.Len())
 	}
 }
