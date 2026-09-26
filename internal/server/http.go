@@ -3,10 +3,12 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 type Cache interface {
 	Set(key string, value string)
+	SetWithTTL(Key string, value string, ttl time.Duration)
 	Get(key string) (string, bool)
 	Delete(key string) bool
 	Len() int
@@ -46,7 +48,8 @@ func (h *Handler) Routes() http.Handler {
 }
 
 type setRequest struct {
-	Value string `json:"value"`
+	Value      string `json:"value"`
+	TTLSeconds *int64 `json:"ttl_seconds,omitempty"`
 }
 
 func (h *Handler) Set(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +78,19 @@ func (h *Handler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.cache.Set(key, request.Value)
+	if err := validateTTL(request.TTLSeconds); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: err.Error(),
+		})
+		return
+	}
+
+	if request.TTLSeconds != nil {
+		ttl := time.Duration(*request.TTLSeconds) * time.Second
+		h.cache.SetWithTTL(key, request.Value, ttl)
+	} else {
+		h.cache.Set(key, request.Value)
+	}
 
 	writeJSON(w, http.StatusCreated, statusResponse{
 		Status: "stored",
