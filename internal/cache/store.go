@@ -1,8 +1,8 @@
 package cache
 
 import (
-	"sync" 
-    "time"
+	"sync"
+	"time"
 )
 
 type Store struct {
@@ -23,7 +23,7 @@ func (s *Store) SetWithTTL(key string, value string, ttl time.Duration) {
 	defer s.mu.Unlock()
 
 	s.entries[key] = Entry{
-		Value: value,
+		Value:     value,
 		ExpiresAt: expiresAt,
 	}
 }
@@ -71,4 +71,22 @@ func (s *Store) Len() int {
 	defer s.mu.RUnlock()
 
 	return len(s.entries)
+}
+
+func (s *Store) DeleteExpired() int {
+	now := time.Now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	deleted := 0
+
+	for key, entry := range s.entries {
+		if entry.IsExpired(now) {
+			delete(s.entries, key)
+			deleted++
+		}
+	}
+
+	return deleted
 }
