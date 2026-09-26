@@ -1,6 +1,9 @@
 package cache
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type Store struct {
 	mu      sync.RWMutex
@@ -13,6 +16,18 @@ func NewStore() *Store {
 	}
 }
 
+func (s *Store) SetWithTTL(key string, value string, ttl time.Duration) {
+	expiresAt := time.Now().Add(ttl)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.entries[key] = Entry{
+		Value:     value,
+		ExpiresAt: expiresAt,
+	}
+}
+
 func (s *Store) Set(key string, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -20,12 +35,17 @@ func (s *Store) Set(key string, value string) {
 }
 
 func (s *Store) Get(key string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	entry, found := s.entries[key]
 
 	if !found {
+		return "", false
+	}
+
+	if !entry.ExpiresAt.IsZero() && time.Now().After(entry.ExpiresAt) {
+		delete(s.entries, key)
 		return "", false
 	}
 
@@ -51,4 +71,22 @@ func (s *Store) Len() int {
 	defer s.mu.RUnlock()
 
 	return len(s.entries)
+}
+
+func (s *Store) DeleteExpired() int {
+	now := time.Now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	deleted := 0
+
+	for key, entry := range s.entries {
+		if entry.IsExpired(now) {
+			delete(s.entries, key)
+			deleted++
+		}
+	}
+
+	return deleted
 }

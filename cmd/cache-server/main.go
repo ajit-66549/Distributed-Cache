@@ -20,8 +20,8 @@ const shutdownTimeout = 10 * time.Second
 func main() {
 	cfg := config.Load()
 
-	store := cache.NewStore()
-	handler := server.NewHandler(store)
+	cacheStore := cache.NewStore()
+	handler := server.NewHandler(cacheStore)
 
 	address := ":" + cfg.Port
 	httpServer := server.NewHTTPServer(address, handler.Routes())
@@ -41,6 +41,12 @@ func main() {
 		syscall.SIGTERM,
 	)
 	defer stop()
+
+	cache.StartExpirationCleanup(
+		shutdownSignal,
+		cacheStore,
+		time.Minute,
+	)
 
 	<-shutdownSignal.Done()
 
