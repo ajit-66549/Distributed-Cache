@@ -19,8 +19,14 @@ const shutdownTimeout = 10 * time.Second
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
 
-	cacheStore := cache.NewStore()
+	cacheStore, err := cache.NewStoreWithLimit(cfg.MaxBytes)
+	if err != nil {
+		log.Fatalf("failed to create cache: %v", err)
+	}
 	handler := server.NewHandler(cacheStore)
 
 	address := ":" + cfg.Port

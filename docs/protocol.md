@@ -99,6 +99,17 @@ Body:
 * If a TTL is provided, the key expires after that number of seconds.
 * Updating a key also replaces its old TTL.
 * If no TTL is provided during an update, the new entry has no expiration.
+* The cache counts the bytes in each key and value toward its memory budget.
+* When a write needs space, the cache evicts the least recently used entries until it fits. Successful reads and writes make an entry most recently used.
+* If the key and value together exceed the entire budget, the write returns `413 Request Entity Too Large`. The cache preserves existing entries, including the old value and TTL when an update is rejected.
+
+### Entry exceeds the cache memory budget
+
+```json
+{
+  "error": "entry exceeds cache memory budget"
+}
+```
 
 ## 5. GET Operation
 

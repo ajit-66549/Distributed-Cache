@@ -2,13 +2,16 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
+
+	"github.com/ajit-66549/distributed-cache/internal/cache"
 )
 
 type Cache interface {
-	Set(key string, value string)
-	SetWithTTL(Key string, value string, ttl time.Duration)
+	Set(key string, value string) error
+	SetWithTTL(key string, value string, ttl time.Duration) error
 	Get(key string) (string, bool)
 	Delete(key string) bool
 	Len() int
@@ -85,11 +88,22 @@ func (h *Handler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var err error
 	if request.TTLSeconds != nil {
 		ttl := time.Duration(*request.TTLSeconds) * time.Second
-		h.cache.SetWithTTL(key, request.Value, ttl)
+		err = h.cache.SetWithTTL(key, request.Value, ttl)
 	} else {
-		h.cache.Set(key, request.Value)
+		err = h.cache.Set(key, request.Value)
+	}
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, cache.ErrEntryTooLarge) {
+			status = http.StatusRequestEntityTooLarge
+		}
+		writeJSON(w, status, errorResponse{
+			Error: err.Error(),
+		})
+		return
 	}
 
 	writeJSON(w, http.StatusCreated, statusResponse{
@@ -132,6 +146,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
 			Error: err.Error(),
 		})
+		return
 	}
 
 	deleted := h.cache.Delete(key)
