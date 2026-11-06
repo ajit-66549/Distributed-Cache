@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -13,7 +14,7 @@ type Cache interface {
 	Set(key string, value string) error
 	SetWithTTL(key string, value string, ttl time.Duration) error
 	Get(key string) (string, bool)
-	Delete(key string) bool
+	Delete(key string) (bool, error)
 	Len() int
 }
 
@@ -149,7 +150,14 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deleted := h.cache.Delete(key)
+	deleted, err := h.cache.Delete(key)
+	if err != nil {
+		log.Printf("cache delete failed: %v", err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error: "failed to delete key",
+		})
+		return
+	}
 
 	if !deleted {
 		writeJSON(w, http.StatusNotFound, errorResponse{
