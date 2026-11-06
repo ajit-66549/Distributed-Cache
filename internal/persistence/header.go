@@ -1,5 +1,5 @@
-// Package persistence defines the on-disk cache format. Its codecs do not
-// open files, synchronize writes, or apply mutations to the cache.
+// Package persistence implements cache log storage and its on-disk format.
+// The codecs serialize data; AOF manages durable file appends.
 package persistence
 
 import (
@@ -20,13 +20,13 @@ const (
 
 // Header describes the format and history represented by an AOF.
 type Header struct {
-	Version uint16
-	BaseSequence uint16
-	MaxBytes int64
+	Version      uint16
+	BaseSequence uint64
+	MaxBytes     int64
 }
 
 // EncodeHeader returns the fixed-size, checksummed version 1 file header.
-func EncodeHeader(header Header) ([byte, error]) {
+func EncodeHeader(header Header) ([]byte, error) {
 	if header.Version != FormatVersion {
 		return nil, fmt.Errorf("%w: %w: %d", ErrInvalidHeader, ErrUnsupportedVersion, header.Version)
 	}
@@ -38,8 +38,8 @@ func EncodeHeader(header Header) ([byte, error]) {
 	data := make([]byte, HeaderSize)
 	copy(data[:8], aofMagic)
 	binary.BigEndian.PutUint16(data[8:10], header.Version)
-	binary.BigEndian.PutUint16(data[10:18], header.BaseSequence)
-	binary.BigEndian.PutUint16(data[18:26], uint64(header.MaxBytes))
+	binary.BigEndian.PutUint64(data[10:18], header.BaseSequence)
+	binary.BigEndian.PutUint64(data[18:26], uint64(header.MaxBytes))
 	binary.BigEndian.PutUint32(data[26:30], crc32.ChecksumIEEE(data[:26]))
 
 	return data, nil
