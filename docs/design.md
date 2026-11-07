@@ -297,6 +297,20 @@ Persistence must provide the cache with a way to append one prepared mutation ba
 
 This phase does not include replication, remote backups, request deduplication, alternative sync policies, automatic memory-budget migration, or exact restoration of read-driven LRU order. Those require separate contracts.
 
+### 9.9 Append-only log implementation
+
+The standalone writer is implemented in [`internal/persistence/aof.go`](../internal/persistence/aof.go). It is not yet connected to HTTP requests or cache recovery.
+
+* `OpenAOF(dataDir, maxBytes)` creates missing directories, acquires the process lock, and creates a new log with a synchronized header or validates an existing log in full. It checks the stored budget, record checksums, and sequence continuity before permitting appends. Newly created directories and the log's directory entry are synchronized as well.
+* `Header()` returns the log metadata. `LastSequence()` returns the last sequence confirmed by validation or a successful append and sync. The caller supplies the next sequence and coordinates cache mutation ordering.
+* `Append(record)` serializes access, checks the next sequence, encodes the record, writes its complete frame, and syncs the log before returning success. Invalid records leave the writer usable. A short write or write/sync error preserves its cause, marks the writer failed, and prevents further appends.
+* `Sync()` explicitly synchronizes a healthy writer; each append already includes a sync. It cannot clear an earlier failure.
+* `Close()` waits for active writer operations, prevents further appends, attempts sync and all cleanup steps, and releases the directory lock last. Repeated closes return the same result. Prior I/O failures and cleanup errors remain reportable through `errors.Is`.
+
+At this implementation stage, opening supports fresh logs and complete, unrotated logs without snapshots. An incomplete tail, an existing snapshot, or a nonzero base sequence returns `ErrRecoveryRequired` without truncating or replacing published data. Tail repair and snapshot validation will be integrated with recovery in later tasks. Corrupt records and budget mismatches also prevent opening. Error messages include the file and record offset where relevant.
+
+Directory locking is implemented for macOS and Linux. Other platforms return `ErrUnsupportedPlatform`. The lock file is kept in place after close so another process cannot acquire ownership through a different lock-file inode while an existing owner still holds its lock.
+
 ## 10. Distributed Architecture
 
 Later versions will run multiple cache nodes.
