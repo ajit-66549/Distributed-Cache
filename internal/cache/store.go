@@ -22,6 +22,8 @@ type Store struct {
 
 	usedBytes int64
 	maxBytes  int64
+
+	mutationLog MutationLog
 }
 
 func NewStore() *Store {
@@ -41,6 +43,23 @@ func NewStoreWithLimit(maxBytes int64) (*Store, error) {
 	store := NewStore()
 	store.maxBytes = maxBytes
 	return store, nil
+}
+
+// NewStoreWithLog creates a store with a supplied mutation log.
+// The caller owns opening and closing the log.
+func NewStoreWithLog(maxBytes int64, mutationLog MutationLog) (*Store, error) {
+	if mutationLog == nil {
+		return nil, errors.New("mutation log is required")
+	}
+
+	store, err := NewStoreWithLimit(maxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	store.mutationLog = mutationLog
+	return store, nil
+
 }
 
 func (s *Store) Set(key, value string) error {
