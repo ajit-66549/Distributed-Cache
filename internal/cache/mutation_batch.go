@@ -15,7 +15,7 @@ func buildSetMutations(key, value string, expiresAtUnixNano *int64, victims []st
 
 	return append(mutations, persistence.Mutation{
 		Op:                persistence.OpSet,
-		key:               key,
+		Key:               key,
 		Value:             value,
 		ExpiresAtUnixNano: expiresAtUnixNano,
 	})

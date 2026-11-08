@@ -87,30 +87,36 @@ func (s *Store) SetWithTTL(
 
 func (s *Store) setLocked(key string, entry Entry) error {
 	size := calculateEntrySize(key, entry.Value)
-	if size > s.maxBytes {
-		return ErrEntryTooLarge
+	victims, err := s.planEvictionsLocked(key, size)
+	if err != nil {
+		return err
+	}
+	if err := s.appendSetLocked(key, entry, victims); err != nil {
+		return err
+	}
+	s.applySetLocked(key, entry, size, victims)
+	return nil
+}
+
+// applySetLocked applies the prepared eviction plan and SET to memory.
+// The caller must hold s.mu and finish logging before calling this method.
+func (s *Store) applySetLocked(key string, entry Entry, size int64, victims []string) {
+	for _, victim := range victims {
+		s.removeElementLocked(s.entries[victim])
 	}
 
 	// The key already exists, so update its list element.
 	if element, found := s.entries[key]; found {
 		item := element.Value.(*lruItem)
 
-		// Exclude the old value while making room for its replacement.
 		s.usedBytes -= item.Size
-
-		// Protect this entry from eviction by making it most recently used.
-		s.lru.MoveToFront(element)
-		s.evictToFitLocked(size)
-
 		item.Entry = entry
 		item.Size = size
-
 		s.usedBytes += item.Size
+		s.lru.MoveToFront(element)
 
-		return nil
+		return
 	}
-
-	s.evictToFitLocked(size)
 
 	item := &lruItem{
 		Key:   key,
@@ -125,7 +131,6 @@ func (s *Store) setLocked(key string, entry Entry) error {
 	s.entries[key] = element
 
 	s.usedBytes += item.Size
-	return nil
 }
 
 func (s *Store) Get(key string) (string, bool) {

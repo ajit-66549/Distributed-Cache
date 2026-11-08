@@ -39,12 +39,3 @@ func (s *Store) planEvictionsLocked(key string, size int64) ([]string, error) {
 	}
 	return victims, nil
 }
-
-// evictToFitLocked makes room for size bytes. The caller must hold s.mu
-// and ensure size does not exceed s.maxBytes.
-func (s *Store) evictToFitLocked(size int64) {
-	// Subtract before comparing to avoid overflowing usedBytes + size.
-	for s.usedBytes > s.maxBytes-size {
-		s.removeElementLocked(s.lru.Back())
-	}
-}

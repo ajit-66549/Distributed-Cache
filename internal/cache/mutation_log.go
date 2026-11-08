@@ -9,6 +9,20 @@ type MutationLog interface {
 	Append(record persistence.Record) error
 }
 
+// appendSetLocked builds and submits the SET batch before memory is changed.
+// The caller must hold s.mu through planning, logging, and applying the batch.
+func (s *Store) appendSetLocked(key string, entry Entry, victims []string) error {
+	if s.mutationLog == nil {
+		return nil
+	}
+	expiration, err := entry.expirationUnixNano()
+	if err != nil {
+		return err
+	}
+	mutations := buildSetMutations(key, entry.Value, expiration, victims)
+	return s.appendMutationsLocked(mutations)
+}
+
 // appendMutationsLocked submits one prepared batch to the log writer.
 // The caller must hold s.mu through planning, logging, and applying the batch.
 func (s *Store) appendMutationsLocked(mutations []persistence.Mutation) error {
