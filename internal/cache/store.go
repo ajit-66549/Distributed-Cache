@@ -159,18 +159,21 @@ func (s *Store) Get(key string) (string, bool) {
 	return item.Entry.Value, true
 }
 
-func (s *Store) Delete(key string) bool {
+func (s *Store) Delete(key string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	element, found := s.entries[key]
 	if !found {
-		return false
+		return false, nil
+	}
+	if err := s.appendDeleteLocked(key); err != nil {
+		return false, err
 	}
 
 	s.removeElementLocked(element)
 
-	return true
+	return true, nil
 }
 
 func (s *Store) Len() int {

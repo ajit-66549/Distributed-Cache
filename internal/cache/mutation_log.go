@@ -23,6 +23,14 @@ func (s *Store) appendSetLocked(key string, entry Entry, victims []string) error
 	return s.appendMutationsLocked(mutations)
 }
 
+// appendDeleteLocked submits a DELETE before the entry is removed from memory.
+// The caller must hold s.mu through logging and removal.
+func (s *Store) appendDeleteLocked(key string) error {
+	return s.appendMutationsLocked([]persistence.Mutation{
+		{Op: persistence.OpDelete, Key: key},
+	})
+}
+
 // appendMutationsLocked submits one prepared batch to the log writer.
 // The caller must hold s.mu through planning, logging, and applying the batch.
 func (s *Store) appendMutationsLocked(mutations []persistence.Mutation) error {
