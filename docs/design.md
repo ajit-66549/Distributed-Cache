@@ -121,7 +121,7 @@ No operation should read or modify the shared map without the required lock.
 
 ## 9. Persistence
 
-This section defines the Phase 7 persistence contract. It describes behavior to implement; the current server still loses its contents on restart.
+This section defines the Phase 7 persistence contract. The server now writes an AOF and restores complete, unrotated logs before serving requests. Automatic repair of incomplete tails, snapshots, and log rotation remain to implement.
 
 The in-memory store remains the normal read path. An append-only file (AOF) records mutations, periodic snapshots capture the live cache, and startup recovery loads a snapshot followed by newer log records. Persistence preserves the outcome of cache operations; later updates, deletes, expiration, and eviction can still remove previously acknowledged values.
 
@@ -299,17 +299,20 @@ This phase does not include replication, remote backups, request deduplication, 
 
 ### 9.9 Append-only log implementation
 
-The standalone writer is implemented in [`internal/persistence/aof.go`](../internal/persistence/aof.go). It is not yet connected to HTTP requests or cache recovery.
+The writer is implemented in [`internal/persistence/aof.go`](../internal/persistence/aof.go). Application startup in [`cmd/cache-server/startup.go`](../cmd/cache-server/startup.go) opens it, creates the cache with `NewStoreWithLog`, and replays the saved records before HTTP requests can reach the cache. Startup defaults `CACHE_DATA_DIR` to `./data`.
 
 * `OpenAOF(dataDir, maxBytes)` creates missing directories, acquires the process lock, and creates a new log with a synchronized header or validates an existing log in full. It checks the stored budget, record checksums, and sequence continuity before permitting appends. Newly created directories and the log's directory entry are synchronized as well.
 * `Header()` returns the log metadata. `LastSequence()` returns the last sequence confirmed by validation or a successful append and sync. The caller supplies the next sequence and coordinates cache mutation ordering.
 * `Append(record)` serializes access, checks the next sequence, encodes the record, writes its complete frame, and syncs the log before returning success. Invalid records leave the writer usable. A short write or write/sync error preserves its cause, marks the writer failed, and prevents further appends.
+* `Replay(apply)` reads a fixed prefix of the opened log, validates record sequences, and calls the supplied apply function for each complete record. Positional reads preserve the append handle's offset. The AOF mutex is released before callbacks acquire cache locks. Replay is a startup operation; a failed recovery cache must be discarded rather than served.
 * `Sync()` explicitly synchronizes a healthy writer; each append already includes a sync. It cannot clear an earlier failure.
 * `Close()` waits for active writer operations, prevents further appends, attempts sync and all cleanup steps, and releases the directory lock last. Repeated closes return the same result. Prior I/O failures and cleanup errors remain reportable through `errors.Is`.
 
 At this implementation stage, opening supports fresh logs and complete, unrotated logs without snapshots. An incomplete tail, an existing snapshot, or a nonzero base sequence returns `ErrRecoveryRequired` without truncating or replacing published data. Tail repair and snapshot validation will be integrated with recovery in later tasks. Corrupt records and budget mismatches also prevent opening. Error messages include the file and record offset where relevant.
 
 Directory locking is implemented for macOS and Linux. Other platforms return `ErrUnsupportedPlatform`. The lock file is kept in place after close so another process cannot acquire ownership through a different lock-file inode while an existing owner still holds its lock.
+
+`Store.ApplyRecoveredRecord` applies recorded DELETEs and SETs without appending records or selecting new eviction victims. It checks the batch's projected memory budget before changing state. An expired SET removes any previous value of the same key. Startup removes entries that expired during replay, then starts HTTP and expiration cleanup. Shutdown drains HTTP requests before closing the writer; returned startup, listener, and shutdown errors pass through cleanup before the process exits.
 
 ## 10. Distributed Architecture
 
