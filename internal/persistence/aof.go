@@ -32,8 +32,8 @@ type AOF struct {
 }
 
 // OpenAOF creates or validates append.aof and holds the data directory's lock
-// until Close. It never truncates existing files or replays data into a cache.
-// Incomplete tails and snapshot-backed logs require the later recovery layer.
+// until Close. An incomplete final record is truncated and the repair is synced
+// before appends are allowed. Corruption and snapshot-backed logs are rejected.
 func OpenAOF(dataDir string, maxBytes int64) (aof *AOF, err error) {
 	if dataDir == "" {
 		return nil, fmt.Errorf("open AOF: data directory must not be empty")
@@ -93,17 +93,24 @@ func OpenAOF(dataDir string, maxBytes int64) (aof *AOF, err error) {
 	}
 
 	var lastSequence uint64
+	var scan aofScanResult
 	if created {
 		if err := writeFull(file, encodedHeader); err != nil {
 			return nil, fmt.Errorf("write AOF header %q: %w", path, err)
 		}
 	} else {
-		header, lastSequence, err = scanAOF(file, maxBytes)
+		scan, err = scanAOF(file, maxBytes)
 		if err != nil {
 			return nil, err
 		}
+		header = scan.header
+		lastSequence = scan.lastSequence
 	}
-	if err := file.Sync(); err != nil {
+	if scan.incompleteBytes > 0 {
+		if err := repairAOFTail(file, scan.validBytes, scan.incompleteBytes); err != nil {
+			return nil, err
+		}
+	} else if err := file.Sync(); err != nil {
 		return nil, fmt.Errorf("sync AOF %q during open: %w", path, err)
 	}
 	if err := syncDirectory(dataDir); err != nil {
@@ -213,37 +220,50 @@ func (aof *AOF) fail(err error) error {
 	return aof.failure
 }
 
-// scanAOF checks existing bytes before appends are allowed. It does not repair
-// damaged tails or apply cache mutations; those are recovery responsibilities.
-func scanAOF(file *os.File, maxBytes int64) (Header, uint64, error) {
+type aofScanResult struct {
+	header          Header
+	lastSequence    uint64
+	validBytes      int64 // Header and complete, validated records.
+	incompleteBytes int64 // Bytes consumed from an incomplete final record.
+}
+
+// scanAOF validates existing bytes and reports an incomplete final record.
+// It never modifies the file or applies cache mutations.
+func scanAOF(file *os.File, maxBytes int64) (aofScanResult, error) {
 	reader := &offsetReader{reader: bufio.NewReader(file)}
 	header, err := DecodeHeader(reader)
 	if err != nil {
-		return Header{}, 0, fmt.Errorf("read AOF %q at offset 0: %w", file.Name(), err)
+		return aofScanResult{}, fmt.Errorf("read AOF %q at offset 0: %w", file.Name(), err)
 	}
 	if header.MaxBytes != maxBytes {
-		return Header{}, 0, fmt.Errorf("AOF %q: %w: stored %d, configured %d", file.Name(), ErrMemoryBudgetMismatch, header.MaxBytes, maxBytes)
+		return aofScanResult{}, fmt.Errorf("AOF %q: %w: stored %d, configured %d", file.Name(), ErrMemoryBudgetMismatch, header.MaxBytes, maxBytes)
 	}
 	if header.BaseSequence != 0 {
-		return Header{}, 0, fmt.Errorf("AOF %q: %w: base sequence %d requires a validated snapshot", file.Name(), ErrRecoveryRequired, header.BaseSequence)
+		return aofScanResult{}, fmt.Errorf("AOF %q: %w: base sequence %d requires a validated snapshot", file.Name(), ErrRecoveryRequired, header.BaseSequence)
 	}
-	lastSequence := header.BaseSequence
+	result := aofScanResult{
+		header:       header,
+		lastSequence: header.BaseSequence,
+		validBytes:   reader.offset,
+	}
 	for {
 		offset := reader.offset
 		record, err := DecodeRecord(reader)
 		if err == io.EOF {
-			return header, lastSequence, nil
+			return result, nil
 		}
 		if err != nil {
 			if errors.Is(err, ErrTruncatedRecord) {
-				err = fmt.Errorf("%w: %w", ErrRecoveryRequired, err)
+				result.incompleteBytes = reader.offset - offset
+				return result, nil
 			}
-			return Header{}, 0, fmt.Errorf("read AOF %q at offset %d: %w", file.Name(), offset, err)
+			return aofScanResult{}, fmt.Errorf("read AOF %q at offset %d: %w", file.Name(), offset, err)
 		}
-		if err := record.ValidateAfter(lastSequence); err != nil {
-			return Header{}, 0, fmt.Errorf("read AOF %q at offset %d: %w", file.Name(), offset, err)
+		if err := record.ValidateAfter(result.lastSequence); err != nil {
+			return aofScanResult{}, fmt.Errorf("read AOF %q at offset %d: %w", file.Name(), offset, err)
 		}
-		lastSequence = record.Sequence
+		result.lastSequence = record.Sequence
+		result.validBytes = reader.offset
 	}
 }
 

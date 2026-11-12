@@ -30,7 +30,9 @@ Stop with `Ctrl+C` to drain HTTP requests, then synchronize and close the log.
 Restart with the same data directory and memory budget to restore saved entries
 that have not expired. The default `data/` directory is gitignored.
 
-The current implementation recovers complete, unrotated logs. Corrupt or
-incomplete logs stop startup with an error; automatic tail repair, snapshots,
-and log rotation are remaining Phase 7 work. Durability details are specified
-in [the persistence contract](docs/design.md#9-persistence).
+The current implementation recovers unrotated logs and repairs an incomplete
+final record by truncating to the last complete record and syncing the file.
+Startup reports the repair offset and discarded byte count. Invalid headers,
+corrupt records, and sequence errors still stop startup. Snapshots and log
+rotation are remaining Phase 7 work. Durability details are specified in
+[the persistence contract](docs/design.md#9-persistence).
