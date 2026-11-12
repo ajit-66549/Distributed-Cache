@@ -270,9 +270,63 @@ Recovery finishes before the HTTP listener or expiration and snapshot workers st
 
 A wholly or partly missing file header is an error, including an empty existing AOF. The incomplete-tail exception applies only after a valid AOF header. A fully present but invalid final record is corruption, not an allowed truncation. No corruption policy can reconstruct bytes that have been lost from acknowledged records.
 
-### 9.7 Snapshot publication and log rotation
+### 9.7 Snapshot format, publication, and log rotation
 
-A snapshot contains its format version, the memory budget, a sequence checkpoint, and each live key's value and absolute deadline in least-to-most-recent LRU order. Its encoding must validate metadata, bounded entry lengths, entry count, checksums, and complete-file termination. A snapshot is accepted only as a whole; it has no incomplete-tail recovery policy. The exact snapshot byte layout is defined when implementing snapshots.
+A snapshot contains its format version, the memory budget, a sequence checkpoint, and each live key's value and absolute deadline in least-to-most-recent LRU order. A snapshot is accepted only as a whole; it has no incomplete-tail recovery policy.
+
+#### Version 1 snapshot format
+
+The format constants and data types are defined in [`internal/persistence/snapshot.go`](../internal/persistence/snapshot.go). This step defines the layout; encoding, decoding, capture, publication, and startup loading remain to implement. The snapshot version is independent of the AOF version. Binary integers use big-endian byte order, and every checksum uses IEEE CRC-32.
+
+The file contains one fixed header, exactly `EntryCount` entry frames, and one file checksum:
+
+```text
+[38-byte header][entry 1]...[entry EntryCount][4-byte file checksum][EOF]
+```
+
+The header layout is:
+
+| Offset | Field | Size | Meaning |
+| --- | --- | --- | --- |
+| 0 | Magic | 8 bytes | ASCII `CACHESNP`. |
+| 8 | Version | `uint16` | `1`, identified by `SnapshotFormatVersion`. |
+| 10 | Checkpoint | `uint64` | All mutations through sequence `N` are reflected in the saved state. |
+| 18 | Memory budget | `uint64` | Positive key/value byte budget, within signed 64-bit range. |
+| 26 | Entry count | `uint64` | Number of unique saved entries, in LRU order. |
+| 34 | Header checksum | `uint32` | CRC-32 of the preceding 34 header bytes. |
+
+Checkpoint `0` is allowed for an initial empty cache and requires an entry count of `0`. A later checkpoint can also have no entries after deletions or expiration. Checkpoints count AOF records, not the number of keys. The memory budget must match both the configured cache limit and the AOF header during startup.
+
+Each entry uses the same framing pattern as an AOF record, with its own payload:
+
+```text
+payload_length: uint32
+length_checksum: uint32       # CRC-32 of the 4 encoded payload_length bytes.
+payload: payload_length bytes # One UTF-8 JSON object describing one entry.
+entry_checksum: uint32        # CRC-32 of encoded payload_length followed by payload.
+```
+
+An entry payload has exactly these three case-sensitive fields:
+
+```json
+{"key":"name","value":"Amit","expires_at_unix_nano":null}
+```
+
+There is no operation or per-entry sequence: entries describe the current state, and the header provides one checkpoint for the entire snapshot. The expiry field is required and contains either `null` or an integer within the signed 64-bit Unix-nanosecond range. It preserves the original deadline without restarting the TTL. Entry order is least recently used first and most recently used last; entries must not be sorted by key.
+
+The following rules apply to both encoding and decoding:
+
+* The magic, version, complete header, and header checksum must be valid before trusting metadata.
+* Verify each length checksum before using its payload length. Payload lengths must be between 1 byte and `MaxSnapshotEntryPayloadSize` (8 MiB), inclusive, before allocating a payload buffer. This allows JSON escaping of keys up to 256 bytes and values up to 1 MiB.
+* Keys must contain 1 to 256 valid UTF-8 bytes; values contain at most 1 MiB of valid UTF-8 bytes and may be empty. Duplicate keys, missing or unknown fields, duplicate fields, invalid types, and trailing JSON values are errors.
+* Entry count must equal the number of encoded entries and cannot exceed the memory budget, since every key uses at least one byte. A decoder must read incrementally rather than preallocate from an untrusted entry count.
+* The sum of key and value bytes across all entries must not exceed the saved budget. Check this without integer overflow and validate every entry, including entries whose deadlines have passed since capture.
+* After exactly `EntryCount` complete frames, require a 4-byte file checksum equal to CRC-32 of all preceding file bytes, including the header checksum and every entry frame. This protects entry order as well as contents. No bytes may follow the file checksum, including whitespace.
+* Any incomplete header, frame, or footer, checksum mismatch, invalid metadata, or other format error rejects the entire snapshot. No partially decoded state may reach the cache.
+
+Capture includes only entries live at one cutoff time. Entries may expire after capture; restore filters them only after the complete snapshot validates. An empty snapshot is a valid 42-byte header-plus-footer file. For example, a checkpoint of `4` after setting `name` to `Ajit`, setting `city` to `Pune`, replacing `name` with `Amit`, and deleting `city` contains only `name = Amit`.
+
+#### Publication and rotation
 
 The first implementation pauses cache operations during capture, publication, and rotation. This keeps LRU order, expiration cleanup, and mutation boundaries consistent without a second concurrent log. The cost is a request pause during snapshot work; reducing that pause is future work.
 
