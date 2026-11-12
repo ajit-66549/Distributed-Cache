@@ -58,16 +58,16 @@ func (f *fakeCache) Get(key string) (string, bool) {
 	return f.value, true
 }
 
-func (f *fakeCache) Delete(key string) bool {
+func (f *fakeCache) Delete(key string) (bool, error) {
 	if !f.found || key != f.key {
-		return false
+		return false, nil
 	}
 
 	f.key = ""
 	f.value = ""
 	f.found = false
 
-	return true
+	return true, nil
 }
 
 func (f *fakeCache) Len() int {

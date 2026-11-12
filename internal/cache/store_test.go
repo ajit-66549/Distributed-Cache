@@ -39,7 +39,10 @@ func TestDeleteExistingKey(t *testing.T) {
 	store := NewStore()
 	store.Set("name", "Ajit")
 
-	deleted := store.Delete("name")
+	deleted, err := store.Delete("name")
+	if err != nil {
+		t.Fatalf("delete existing key: %v", err)
+	}
 
 	if !deleted {
 		t.Fatal("expected key to be deleted")
@@ -59,7 +62,10 @@ func TestDeleteExistingKey(t *testing.T) {
 func TestDeleteMissingKey(t *testing.T) {
 	store := NewStore()
 
-	deleted := store.Delete("missing")
+	deleted, err := store.Delete("missing")
+	if err != nil {
+		t.Fatalf("delete missing key: %v", err)
+	}
 
 	if deleted {
 		t.Fatal("expected missing key not to be deleted")
