@@ -10,12 +10,21 @@ import (
 // order. Use it during startup before serving requests. The callback must apply
 // records without logging them again; discard the recovering cache on error.
 func (aof *AOF) Replay(apply func(Record) error) error {
+	return aof.ReplayAfter(0, apply)
+}
+
+// ReplayAfter validates every record but applies only sequences newer than the
+// restored checkpoint. The caller must restore the matching snapshot first.
+func (aof *AOF) ReplayAfter(checkpoint uint64, apply func(Record) error) error {
 	if apply == nil {
 		return fmt.Errorf("replay AOF: an apply callback is required")
 	}
 	reader, header, expectedLast, err := aof.replaySource()
 	if err != nil {
 		return err
+	}
+	if checkpoint < header.BaseSequence || checkpoint > expectedLast {
+		return fmt.Errorf("replay AOF %q: %w: checkpoint %d outside log range %d..%d", aof.path, ErrInvalidSequence, checkpoint, header.BaseSequence, expectedLast)
 	}
 	lastSequence := header.BaseSequence
 	for {
@@ -33,8 +42,10 @@ func (aof *AOF) Replay(apply func(Record) error) error {
 		if err := record.ValidateAfter(lastSequence); err != nil {
 			return fmt.Errorf("replay AOF %q at offset %d: %w", aof.path, offset, err)
 		}
-		if err := apply(record); err != nil {
-			return fmt.Errorf("apply AOF %q at offset %d, sequence %d: %w", aof.path, offset, record.Sequence, err)
+		if record.Sequence > checkpoint {
+			if err := apply(record); err != nil {
+				return fmt.Errorf("apply AOF %q at offset %d, sequence %d: %w", aof.path, offset, record.Sequence, err)
+			}
 		}
 		lastSequence = record.Sequence
 	}
