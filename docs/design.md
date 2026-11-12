@@ -121,17 +121,200 @@ No operation should read or modify the shared map without the required lock.
 
 ## 9. Persistence
 
-The in-memory map will remain the primary storage.
+This section defines the Phase 7 persistence contract. The server now writes an AOF, repairs incomplete final records, and restores unrotated logs before serving requests. Snapshots and log rotation remain to implement.
 
-Persistence will be added later using:
+The in-memory store remains the normal read path. An append-only file (AOF) records mutations, periodic snapshots capture the live cache, and startup recovery loads a snapshot followed by newer log records. Persistence preserves the outcome of cache operations; later updates, deletes, expiration, and eviction can still remove previously acknowledged values.
 
-* An append-only log
-* Periodic snapshots
-* Startup recovery
+### 9.1 Scope, configuration, and file ownership
 
-After a restart, the cache will load its latest snapshot and replay newer log entries.
+The first persistence implementation supports one process and one local data directory on macOS or Linux. It requires file synchronization, directory synchronization, and atomic replacement within the same directory. Unsupported filesystem behavior must produce an error rather than silently weakening the contract.
 
-Disk persistence is for recovery. It is not the normal read path.
+| Setting | Initial policy |
+| --- | --- |
+| `CACHE_DATA_DIR` | Defaults to `./data`, relative to the working directory. |
+| `CACHE_SNAPSHOT_INTERVAL` | Defaults to `1m`; accepts a positive Go duration. |
+| Write synchronization | Fixed to `always`: sync each mutation before acknowledging it. |
+| `CACHE_MAX_BYTES` | Keeps its existing meaning: the budget counts key and value bytes. |
+
+The data directory contains:
+
+```text
+data/
+  LOCK             # Exclusive process lock, held until persistence closes.
+  append.aof       # Active mutation log.
+  snapshot.bin     # Latest published snapshot; absent before the first snapshot.
+```
+
+Temporary snapshot and replacement-log files are created in this directory. They are never recovery inputs and are never automatically promoted at startup. The `data/` directory is already gitignored.
+
+Only the process holding the exclusive lock may inspect for recovery or modify these files. A second server using the same directory must fail startup. Newly created directories, file contents, and directory entries must be synchronized before the server accepts durable writes.
+
+The persisted memory budget must match `CACHE_MAX_BYTES` on restart. Version 1 rejects a mismatch instead of silently evicting recovered data or migrating the files. Changing the budget of an existing data directory requires a future migration mechanism.
+
+### 9.2 Mutation ordering and acknowledgment
+
+Every state-changing client `SET` or `DELETE` has one sequence number and one log record. Sequences are unsigned 64-bit integers, start at 1, and increase by exactly 1 for each record. Rotation preserves the sequence; exhaustion must stop writes instead of wrapping to zero.
+
+The operation order is:
+
+```text
+Validate input and prepare the complete mutation, including eviction victims
+    -> Encode and validate the record size
+    -> Append the complete record
+    -> Sync the AOF
+    -> Apply the prepared mutation to memory
+    -> Return HTTP success
+```
+
+Eviction planning, logging, and applying the mutation must share one coordinated critical section. Concurrent requests, LRU-changing reads, expiration cleanup, and snapshot work must not invalidate the prepared mutation. No intermediate batch state may be visible to a reader.
+
+* A successful `PUT` returns the existing `201 Created` response only after the record has been synchronized and applied.
+* A successful `DELETE` returns the existing `200 OK` response only after its removal has been synchronized and applied. Its internal API must be able to return a persistence error, rather than only a boolean.
+* Invalid input, an entry exceeding the memory budget, or a record exceeding the format limit is rejected before append and before any eviction or memory change. An oversized record returns `413 Request Entity Too Large`.
+* A `DELETE` that finds no stored entry remains `404 Not Found` and creates no log record. An expired entry still physically present may be deleted and logged, preserving the current store's deletion behavior.
+* `GET` and `PING` create no log records. `GET` still updates live LRU order.
+* Expiration cleanup requires no delete records because the original absolute deadline already represents expiration durably.
+
+An append, sync, or persistence publication failure returns a server error for the affected request where applicable, leaves its prepared mutation unapplied, and places persistence in a failed state. Further client mutations and snapshot work are rejected until restart and recovery. Reads may continue against the last applied in-memory state. Errors must be reported with their operation and file context.
+
+A failed, interrupted, or unanswered request has an **unknown durability outcome** once append has begun: a complete record may reach storage even when the client receives no success. Recovery may apply that record. The API does not provide request deduplication or an exactly-once retry guarantee.
+
+### 9.3 Durability guarantee and limits
+
+An acknowledged mutation is recoverable after process termination, provided the persistence files remain available and valid. Recovery preserves its logical effect in sequence order, subject to subsequent mutations and expiration.
+
+The implementation uses Go's [`File.Sync`](https://pkg.go.dev/os#File.Sync) to request stable storage. File creation and replacement also require synchronization of the containing directory; syncing a file alone does not make its directory entry durable, as described by the [Linux `fsync` documentation](https://man7.org/linux/man-pages/man2/fsync.2.html).
+
+Machine-crash and power-loss durability depend on the operating system, filesystem, and storage device honoring these synchronization requests. The contract does not promise recovery from lost files, disk failure, or undetected corruption. CRC checks detect accidental corruption with high probability; they cannot repair it or authenticate data.
+
+### 9.4 Version 1 AOF format
+
+The format uses a fixed binary file header followed by length-framed UTF-8 JSON records. Binary integers use big-endian byte order. All checksums use the IEEE CRC-32 algorithm exposed by Go's [`crc32.ChecksumIEEE`](https://pkg.go.dev/hash/crc32#ChecksumIEEE), calculated over the exact stored bytes.
+
+The 30-byte file header is:
+
+| Field | Size | Meaning |
+| --- | --- | --- |
+| Magic | 8 bytes | ASCII `CACHEAOF`. |
+| Version | `uint16` | `1`. Applies to every record in this file. |
+| Base sequence | `uint64` | Last sequence retired by rotation; `0` for a new log. |
+| Memory budget | `uint64` | Original positive `CACHE_MAX_BYTES`, within signed 64-bit range. |
+| Header checksum | `uint32` | CRC-32 of the preceding 26 header bytes. |
+
+Each record is framed as:
+
+```text
+payload_length: uint32
+length_checksum: uint32       # CRC-32 of the 4 encoded payload_length bytes.
+payload: payload_length bytes # One UTF-8 JSON object.
+record_checksum: uint32       # CRC-32 of encoded payload_length followed by payload.
+```
+
+The length checksum must be verified before using the length. This prevents an accidentally changed length from being treated as an ordinary incomplete payload. Payload length must be between 1 byte and 64 MiB inclusive and must be checked before allocating a payload buffer. This limit applies to the entire encoded mutation batch, including JSON escaping and eviction removals; it is separate from the cache's key/value byte budget.
+
+The JSON payload has exactly two fields: `sequence` and a nonempty ordered `mutations` array. A normal `SET` record looks like:
+
+```json
+{
+  "sequence": 1,
+  "mutations": [
+    {"op": "SET", "key": "name", "value": "Ajit", "expires_at_unix_nano": null}
+  ]
+}
+```
+
+Every mutation requires `op` and `key`. `SET` additionally requires `value` and `expires_at_unix_nano`; `DELETE` carries neither of those fields. Keys and values are valid UTF-8 JSON strings: keys contain 1 to 256 bytes, and values contain at most 1 MiB; an empty value is valid. An expiration is either `null` for no deadline or a signed 64-bit Unix timestamp in nanoseconds. Sequences are decoded directly as unsigned 64-bit integers, without a floating-point conversion. Field names are case-sensitive. Unknown or duplicate fields, unsupported operations, invalid field types, missing required fields, or trailing payload data are format errors.
+
+An explicit client deletion contains one `DELETE`. A `SET` that evicts entries contains their `DELETE` mutations first, in eviction order, followed by the `SET`, all inside one checksummed record with one sequence number. Recovery validates the entire record before applying any of it. A truncated batch applies none of its mutations.
+
+The first record follows the header's base sequence, and every subsequent record follows its predecessor. Gaps, duplicate sequences, and sequence overflow are errors. Unknown format versions must fail recovery; version 1 does not attempt automatic format conversion.
+
+The codecs are implemented in [`internal/persistence/header.go`](../internal/persistence/header.go) and [`internal/persistence/record.go`](../internal/persistence/record.go). `EncodeHeader` and `EncodeRecord` return complete byte slices. `DecodeHeader` and `DecodeRecord` consume exactly one header or record from an `io.Reader`; they perform no file writes or cache mutations. Log writers and recovery use `Record.ValidateAfter` with the header's base sequence or the previous record's sequence to enforce continuity across records.
+
+`DecodeRecord` returns `io.EOF` only at a clean record boundary. An incomplete frame returns `ErrTruncatedRecord`; malformed payloads, oversized records, invalid sequences, unsupported versions, and checksum mismatches have separate errors that callers can identify with `errors.Is`. A decoder returns no partial record on failure. File paths and offsets are added by the log reader during recovery.
+
+### 9.5 TTL and eviction recovery
+
+A TTL is converted to an absolute UTC expiration deadline once, while preparing its original write. Conversion must reject duration or timestamp overflow. Disk latency and server downtime do not extend the deadline. Replacing a value also replaces its deadline; a `SET` without TTL stores `null` and clears any earlier expiration.
+
+For example, a value stored at `10:00:00` with a five-second TTL expires at `10:00:05`. Starting the server at `10:00:10` must leave that key absent.
+
+An expired `SET` encountered during replay still supersedes the previous value of the same key: recovery removes that key rather than skipping the operation and exposing an older value. Any eviction removals in the same record still apply. Once replay completes, entries expired at the recovery cutoff are removed; normal access-time expiration resumes before requests are served.
+
+Recovery applies recorded eviction decisions directly and does not call normal write methods that could evict different keys or append new records. It rebuilds the map, linked list, and key/value byte accounting. A reconstructed state exceeding the recorded budget is an error.
+
+Snapshots preserve LRU order at their checkpoint. Reads after that checkpoint are not logged, so their exact recency order is not restored. Replay makes later `SET` entries most recently used and honors recorded removal victims. Recovered membership is preserved, while the next eviction decision may differ from the decision an uninterrupted process would have made.
+
+### 9.6 Startup and damaged-file policy
+
+Recovery finishes before the HTTP listener or expiration and snapshot workers start:
+
+1. Acquire exclusive ownership of the data directory.
+2. Validate published file headers, versions, checksums, and the configured memory budget.
+3. Load and validate the published snapshot, if present, including its checkpoint `N`.
+4. Scan the AOF in order, validating even records already covered by the snapshot. Apply only sequences greater than `N`.
+5. Repair an allowed incomplete final record, remove expired entries, and rebuild cache bookkeeping.
+6. Open the valid AOF for append, then start serving requests and running background workers.
+
+| Condition | Required behavior |
+| --- | --- |
+| Neither published file exists | Initialize a new, durably created AOF with base sequence `0`. |
+| AOF exists without a snapshot | Recover only if its base sequence is `0`. |
+| Snapshot exists without an AOF | Fail startup; do not assume that later mutations never existed. |
+| AOF base sequence exceeds the snapshot checkpoint | Fail startup because required history is missing. |
+| EOF exactly between complete records | Normal end of log. |
+| EOF within the final record header, payload, or trailing checksum | Report its offset and discarded byte count, recover the valid prefix, truncate to the last complete record, and sync the repair before appending. |
+| Invalid header, checksum mismatch anywhere, invalid length, malformed record, or sequence error | Fail startup with file and offset context. Do not skip records or modify the published files. |
+| Incomplete or corrupt published snapshot | Fail startup. Retired log history may make fallback unsafe. |
+| Temporary files left by an interrupted operation | Ignore them as recovery inputs. Never substitute them for a missing published file. |
+
+A wholly or partly missing file header is an error, including an empty existing AOF. The incomplete-tail exception applies only after a valid AOF header. A fully present but invalid final record is corruption, not an allowed truncation. No corruption policy can reconstruct bytes that have been lost from acknowledged records.
+
+### 9.7 Snapshot publication and log rotation
+
+A snapshot contains its format version, the memory budget, a sequence checkpoint, and each live key's value and absolute deadline in least-to-most-recent LRU order. Its encoding must validate metadata, bounded entry lengths, entry count, checksums, and complete-file termination. A snapshot is accepted only as a whole; it has no incomplete-tail recovery policy. The exact snapshot byte layout is defined when implementing snapshots.
+
+The first implementation pauses cache operations during capture, publication, and rotation. This keeps LRU order, expiration cleanup, and mutation boundaries consistent without a second concurrent log. The cost is a request pause during snapshot work; reducing that pause is future work.
+
+With the cache paused at sequence `N`:
+
+1. Capture live entries and checkpoint `N`.
+2. Write a complete temporary snapshot in the data directory, sync it, and close it successfully.
+3. Atomically rename it to `snapshot.bin`, then sync the directory. Do not alter the active AOF before this succeeds.
+4. Write and sync a temporary replacement AOF containing a valid header with base sequence `N` and the same memory budget. Close it successfully.
+5. Atomically rename it to `append.aof`, then sync the directory. Switch the append handle to the published replacement before resuming operations.
+6. Resume cache operations; the next mutation uses sequence `N + 1`.
+
+The old AOF remains available until snapshot publication is durable. A crash before publication leaves the old snapshot and full log usable. A crash after snapshot publication but before AOF replacement leaves the new snapshot and old log usable; replay skips sequences at or below `N`. After replacement, the new snapshot and AOF base agree at `N`. No mutation can arrive between capture and rotation because operations remain paused.
+
+Do not truncate the active AOF in place as a rotation strategy. Periodic snapshots must not overlap. Publication or rotation errors enter the failed persistence state described above; do not continue appending through a handle that may refer to a replaced file.
+
+### 9.8 Shutdown and implementation boundaries
+
+Shutdown stops accepting requests, cancels background scheduling, waits for in-flight requests and snapshot work to finish, then syncs and closes the active log and releases the directory lock. Persistence must not close while a request or worker can still use it. Shutdown errors must be reported. A final snapshot is optional for recovery because every acknowledged mutation is already in a synchronized log or a safely published snapshot.
+
+Persistence must provide the cache with a way to append one prepared mutation batch and propagate errors. The cache must provide snapshot capture and recovery application paths that preserve absolute deadlines and bookkeeping without recursively logging operations. `DELETE` error propagation requires updating the existing server `Cache` interface and handler.
+
+This phase does not include replication, remote backups, request deduplication, alternative sync policies, automatic memory-budget migration, or exact restoration of read-driven LRU order. Those require separate contracts.
+
+### 9.9 Append-only log implementation
+
+The writer is implemented in [`internal/persistence/aof.go`](../internal/persistence/aof.go). Application startup in [`cmd/cache-server/startup.go`](../cmd/cache-server/startup.go) opens it, creates the cache with `NewStoreWithLog`, and replays the saved records before HTTP requests can reach the cache. Startup defaults `CACHE_DATA_DIR` to `./data`.
+
+* `OpenAOF(dataDir, maxBytes)` creates missing directories, acquires the process lock, and creates a new log with a synchronized header or validates an existing log. It checks the stored budget, record checksums, and sequence continuity before permitting appends. An incomplete final record is truncated to the last valid boundary and the repair is synchronized first. Newly created directories and the log's directory entry are synchronized as well.
+* `Header()` returns the log metadata. `LastSequence()` returns the last sequence confirmed by validation or a successful append and sync. The caller supplies the next sequence and coordinates cache mutation ordering.
+* `Append(record)` serializes access, checks the next sequence, encodes the record, writes its complete frame, and syncs the log before returning success. Invalid records leave the writer usable. A short write or write/sync error preserves its cause, marks the writer failed, and prevents further appends.
+* `Replay(apply)` reads a fixed prefix of the opened log, validates record sequences, and calls the supplied apply function for each complete record. Positional reads preserve the append handle's offset. The AOF mutex is released before callbacks acquire cache locks. Replay is a startup operation; a failed recovery cache must be discarded rather than served.
+* `Sync()` explicitly synchronizes a healthy writer; each append already includes a sync. It cannot clear an earlier failure.
+* `Close()` waits for active writer operations, prevents further appends, attempts sync and all cleanup steps, and releases the directory lock last. Repeated closes return the same result. Prior I/O failures and cleanup errors remain reportable through `errors.Is`.
+
+At this implementation stage, opening supports fresh logs and unrotated logs without snapshots. `scanAOF` reports the validated header, last complete sequence, valid byte count, and any incomplete final byte count without changing the file. The repair helper in [`internal/persistence/tail.go`](../internal/persistence/tail.go) truncates only that incomplete tail, syncs the repair, and logs its offset and discarded byte count. A truncation or sync failure prevents startup. Replay then reads only the complete prefix, and the next append follows its last sequence.
+
+An existing snapshot or a nonzero base sequence still returns `ErrRecoveryRequired`; snapshot validation remains to implement. Invalid or incomplete file headers, corrupt records, invalid lengths, sequence errors, and budget mismatches prevent opening without modifying the file. Error messages include the file and record offset where relevant.
+
+Directory locking is implemented for macOS and Linux. Other platforms return `ErrUnsupportedPlatform`. The lock file is kept in place after close so another process cannot acquire ownership through a different lock-file inode while an existing owner still holds its lock.
+
+`Store.ApplyRecoveredRecord` applies recorded DELETEs and SETs without appending records or selecting new eviction victims. It checks the batch's projected memory budget before changing state. An expired SET removes any previous value of the same key. Startup removes entries that expired during replay, then starts HTTP and expiration cleanup. Shutdown drains HTTP requests before closing the writer; returned startup, listener, and shutdown errors pass through cleanup before the process exits.
 
 ## 10. Distributed Architecture
 

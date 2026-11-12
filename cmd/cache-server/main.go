@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -18,27 +19,30 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() (err error) {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid configuration: %v", err)
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	cacheStore, err := cache.NewStoreWithLimit(cfg.MaxBytes)
+	cacheStore, writer, err := openStore(cfg)
 	if err != nil {
-		log.Fatalf("failed to create cache: %v", err)
+		return err
 	}
+	defer func() {
+		err = errors.Join(err, writer.Close())
+	}()
 	handler := server.NewHandler(cacheStore)
 
 	address := ":" + cfg.Port
 	httpServer := server.NewHTTPServer(address, handler.Routes())
-
-	go func() {
-		log.Printf("distributed cache server listening on %s", address)
-
-		if err := httpServer.ListenAndServe(); err != nil &&
-			!errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server failed: %v", err)
-		}
+	defer func() {
+		err = errors.Join(err, httpServer.Close())
 	}()
 
 	shutdownSignal, stop := signal.NotifyContext(
@@ -48,15 +52,26 @@ func main() {
 	)
 	defer stop()
 
+	serverErrors := make(chan error, 1)
+	go func() {
+		log.Printf("distributed cache server listening on %s", address)
+		serverErrors <- httpServer.ListenAndServe()
+	}()
+
 	cache.StartExpirationCleanup(
 		shutdownSignal,
 		cacheStore,
 		time.Minute,
 	)
 
-	<-shutdownSignal.Done()
-
-	log.Println("shutdown signal received")
+	select {
+	case <-shutdownSignal.Done():
+		log.Println("shutdown signal received")
+	case serveErr := <-serverErrors:
+		if !errors.Is(serveErr, http.ErrServerClosed) {
+			return fmt.Errorf("server failed: %w", serveErr)
+		}
+	}
 
 	shutdownContext, cancel := context.WithTimeout(
 		context.Background(),
@@ -65,8 +80,9 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownContext); err != nil {
-		log.Fatalf("graceful shutdown failed: %v", err)
+		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}
 
 	log.Println("server stopped gracefully")
+	return nil
 }

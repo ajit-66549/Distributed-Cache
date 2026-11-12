@@ -22,6 +22,8 @@ type Store struct {
 
 	usedBytes int64
 	maxBytes  int64
+
+	mutationLog MutationLog
 }
 
 func NewStore() *Store {
@@ -41,6 +43,23 @@ func NewStoreWithLimit(maxBytes int64) (*Store, error) {
 	store := NewStore()
 	store.maxBytes = maxBytes
 	return store, nil
+}
+
+// NewStoreWithLog creates a store with a supplied mutation log.
+// The caller owns opening and closing the log.
+func NewStoreWithLog(maxBytes int64, mutationLog MutationLog) (*Store, error) {
+	if mutationLog == nil {
+		return nil, errors.New("mutation log is required")
+	}
+
+	store, err := NewStoreWithLimit(maxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	store.mutationLog = mutationLog
+	return store, nil
+
 }
 
 func (s *Store) Set(key, value string) error {
@@ -68,30 +87,36 @@ func (s *Store) SetWithTTL(
 
 func (s *Store) setLocked(key string, entry Entry) error {
 	size := calculateEntrySize(key, entry.Value)
-	if size > s.maxBytes {
-		return ErrEntryTooLarge
+	victims, err := s.planEvictionsLocked(key, size)
+	if err != nil {
+		return err
+	}
+	if err := s.appendSetLocked(key, entry, victims); err != nil {
+		return err
+	}
+	s.applySetLocked(key, entry, size, victims)
+	return nil
+}
+
+// applySetLocked applies the prepared eviction plan and SET to memory.
+// The caller must hold s.mu and finish logging before calling this method.
+func (s *Store) applySetLocked(key string, entry Entry, size int64, victims []string) {
+	for _, victim := range victims {
+		s.removeElementLocked(s.entries[victim])
 	}
 
 	// The key already exists, so update its list element.
 	if element, found := s.entries[key]; found {
 		item := element.Value.(*lruItem)
 
-		// Exclude the old value while making room for its replacement.
 		s.usedBytes -= item.Size
-
-		// Protect this entry from eviction by making it most recently used.
-		s.lru.MoveToFront(element)
-		s.evictToFitLocked(size)
-
 		item.Entry = entry
 		item.Size = size
-
 		s.usedBytes += item.Size
+		s.lru.MoveToFront(element)
 
-		return nil
+		return
 	}
-
-	s.evictToFitLocked(size)
 
 	item := &lruItem{
 		Key:   key,
@@ -106,7 +131,6 @@ func (s *Store) setLocked(key string, entry Entry) error {
 	s.entries[key] = element
 
 	s.usedBytes += item.Size
-	return nil
 }
 
 func (s *Store) Get(key string) (string, bool) {
@@ -135,18 +159,21 @@ func (s *Store) Get(key string) (string, bool) {
 	return item.Entry.Value, true
 }
 
-func (s *Store) Delete(key string) bool {
+func (s *Store) Delete(key string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	element, found := s.entries[key]
 	if !found {
-		return false
+		return false, nil
+	}
+	if err := s.appendDeleteLocked(key); err != nil {
+		return false, err
 	}
 
 	s.removeElementLocked(element)
 
-	return true
+	return true, nil
 }
 
 func (s *Store) Len() int {

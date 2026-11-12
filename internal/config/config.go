@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Port     string
 	MaxBytes int64
+	DataDir  string
 }
 
 func Load() Config {
@@ -18,6 +19,10 @@ func Load() Config {
 
 	if port == "" {
 		port = "8080"
+	}
+	dataDir := os.Getenv("CACHE_DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./data"
 	}
 
 	maxBytes := cache.DefaultMaxBytes
@@ -33,12 +38,16 @@ func Load() Config {
 	return Config{
 		Port:     port,
 		MaxBytes: maxBytes,
+		DataDir:  dataDir,
 	}
 }
 
 func (c Config) Validate() error {
 	if c.MaxBytes <= 0 {
 		return errors.New("CACHE_MAX_BYTES must be a positive integer in bytes")
+	}
+	if c.DataDir == "" {
+		return errors.New("CACHE_DATA_DIR must not be empty")
 	}
 	return nil
 }
