@@ -33,6 +33,9 @@ that have not expired. The default `data/` directory is gitignored.
 The current implementation recovers unrotated logs and repairs an incomplete
 final record by truncating to the last complete record and syncing the file.
 Startup reports the repair offset and discarded byte count. Invalid headers,
-corrupt records, and sequence errors still stop startup. Snapshots and log
-rotation are remaining Phase 7 work. Durability details are specified in
+corrupt records, and sequence errors still stop startup. Snapshot capture and
+atomic saving are available through `Store.SaveSnapshot()` but are not triggered
+automatically. Startup still rejects published snapshots until loading is
+implemented. Snapshot loading, log rotation, and periodic scheduling are remaining
+Phase 7 work. Durability details are specified in
 [the persistence contract](docs/design.md#9-persistence).

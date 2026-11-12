@@ -121,7 +121,7 @@ No operation should read or modify the shared map without the required lock.
 
 ## 9. Persistence
 
-This section defines the Phase 7 persistence contract. The server now writes an AOF, repairs incomplete final records, and restores unrotated logs before serving requests. Snapshots and log rotation remain to implement.
+This section defines the Phase 7 persistence contract. The server now writes an AOF, repairs incomplete final records, and restores unrotated logs before serving requests. Snapshot capture and atomic publication are implemented as an explicit API. Snapshot loading, log rotation, and periodic snapshot scheduling remain to implement.
 
 The in-memory store remains the normal read path. An append-only file (AOF) records mutations, periodic snapshots capture the live cache, and startup recovery loads a snapshot followed by newer log records. Persistence preserves the outcome of cache operations; later updates, deletes, expiration, and eviction can still remove previously acknowledged values.
 
@@ -276,7 +276,7 @@ A snapshot contains its format version, the memory budget, a sequence checkpoint
 
 #### Version 1 snapshot format
 
-The format constants and data types are defined in [`internal/persistence/snapshot.go`](../internal/persistence/snapshot.go). This step defines the layout; encoding, decoding, capture, publication, and startup loading remain to implement. The snapshot version is independent of the AOF version. Binary integers use big-endian byte order, and every checksum uses IEEE CRC-32.
+The format constants and data types are defined in [`internal/persistence/snapshot.go`](../internal/persistence/snapshot.go). Validation, encoding, capture, and publication are implemented; decoding and startup loading remain to implement. The snapshot version is independent of the AOF version. Binary integers use big-endian byte order, and every checksum uses IEEE CRC-32.
 
 The file contains one fixed header, exactly `EntryCount` entry frames, and one file checksum:
 
@@ -327,6 +327,14 @@ The following rules apply to both encoding and decoding:
 Capture includes only entries live at one cutoff time. Entries may expire after capture; restore filters them only after the complete snapshot validates. An empty snapshot is a valid 42-byte header-plus-footer file. For example, a checkpoint of `4` after setting `name` to `Ajit`, setting `city` to `Pune`, replacing `name` with `Amit`, and deleting `city` contains only `name = Amit`.
 
 #### Publication and rotation
+
+`Store.SaveSnapshot()` coordinates capture and publication under the cache lock. Its capture helper in [`internal/cache/snapshot_capture.go`](../internal/cache/snapshot_capture.go) copies entries live at one cutoff time, traversing the LRU list from back to front. It preserves absolute deadlines, records the attached log's sequence, and does not delete entries or log mutations. The snapshot writer is a separate optional capability of the attached mutation log; the existing mutation-log interface is unchanged.
+
+`AOF.SaveSnapshot(snapshot)` serializes publication with appends and close. It rejects closed or failed writers, validates the whole snapshot, and requires the budget and checkpoint to match the active log before creating any file. Invalid input leaves the writer usable. The validator in [`internal/persistence/snapshot_validation.go`](../internal/persistence/snapshot_validation.go) checks metadata, entry counts, UTF-8 limits, uniqueness, and overflow-safe memory accounting.
+
+The encoder in [`internal/persistence/snapshot_encode.go`](../internal/persistence/snapshot_encode.go) writes the header, one entry frame at a time, and the whole-file checksum. The publisher in [`internal/persistence/snapshot_file.go`](../internal/persistence/snapshot_file.go) creates a unique, owner-only temporary file in the data directory, encodes and flushes it, syncs it, and closes it successfully. Only then does it rename the file to `snapshot.bin` and sync the containing directory. It attempts to close and remove temporary files on error. The old published snapshot is preserved until rename; a directory-sync error after rename has an uncertain durability outcome and stops further writes by placing the AOF in its failed state.
+
+This save operation does not change, truncate, or rotate the AOF or advance its sequence. Snapshot saving is not called automatically by the server yet. The existing startup guard still rejects a published snapshot until snapshot loading is implemented; no startup or replay behavior is changed by this step.
 
 The first implementation pauses cache operations during capture, publication, and rotation. This keeps LRU order, expiration cleanup, and mutation boundaries consistent without a second concurrent log. The cost is a request pause during snapshot work; reducing that pause is future work.
 
