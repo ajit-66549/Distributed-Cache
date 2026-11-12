@@ -195,12 +195,24 @@ func TestLRUOverwriteAndDeleteAccounting(t *testing.T) {
 	mustSet(t, store, "a", "y")
 	assertStoreState(t, store, []string{"a", "b", "c"}, 12)
 
-	if !store.Delete("b") || store.Delete("b") {
+	deleted, err := store.Delete("b")
+	if err != nil {
+		t.Fatalf("delete b: %v", err)
+	}
+	deletedAgain, err := store.Delete("b")
+	if err != nil {
+		t.Fatalf("delete b again: %v", err)
+	}
+	if !deleted || deletedAgain {
 		t.Fatal("expected exactly one successful deletion of b")
 	}
 	assertStoreState(t, store, []string{"a", "c"}, 6)
-	store.Delete("a")
-	store.Delete("c")
+	if _, err := store.Delete("a"); err != nil {
+		t.Fatalf("delete a: %v", err)
+	}
+	if _, err := store.Delete("c"); err != nil {
+		t.Fatalf("delete c: %v", err)
+	}
 	assertStoreState(t, store, nil, 0)
 }
 

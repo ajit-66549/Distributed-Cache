@@ -52,7 +52,12 @@ func TestStoreConcurrentAccess(t *testing.T) {
 
 			key := fmt.Sprintf("delete-%d", i)
 
-			if !store.Delete(key) {
+			deleted, err := store.Delete(key)
+			if err != nil {
+				t.Errorf("delete %s: %v", key, err)
+				return
+			}
+			if !deleted {
 				t.Errorf("expected %s to be deleted", key)
 			}
 		}()
