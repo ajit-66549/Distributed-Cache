@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 )
 
-// SaveSnapshot publishes the cache state at the current durable sequence. The
-// caller must hold the cache lock from capture until this returns. Publication
-// is serialized with appends and Close, and does not rotate or truncate the AOF.
+// SaveSnapshot publishes the cache state at the current durable sequence, then
+// rotates the AOF to that checkpoint. The caller must hold the cache lock from
+// capture until this returns. Publication and rotation exclude appends and Close.
 func (aof *AOF) SaveSnapshot(snapshot Snapshot) error {
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
@@ -24,6 +24,9 @@ func (aof *AOF) SaveSnapshot(snapshot Snapshot) error {
 		return fmt.Errorf("save snapshot for AOF %q: %w: checkpoint %d, current sequence %d", aof.path, ErrInvalidSequence, snapshot.Header.Checkpoint, aof.lastSequence)
 	}
 	if err := writeSnapshotFile(filepath.Dir(aof.path), snapshot); err != nil {
+		return aof.fail(err)
+	}
+	if err := aof.rotateLocked(); err != nil {
 		return aof.fail(err)
 	}
 	return nil

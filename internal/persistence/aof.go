@@ -149,8 +149,10 @@ func openAOF(dataDir string, maxBytes int64, loadSnapshot bool) (aof *AOF, snaps
 	}, snapshot, nil
 }
 
-// Header returns the immutable metadata read or written during OpenAOF.
+// Header returns the current log metadata, including the base after rotation.
 func (aof *AOF) Header() Header {
+	aof.mu.Lock()
+	defer aof.mu.Unlock()
 	return aof.header
 }
 

@@ -9,7 +9,8 @@ import (
 
 // captureSnapshotLocked copies live entries in least-to-most-recent LRU order.
 // The caller must hold s.mu, have an attached log, and keep the lock until the
-// snapshot is published. Capture does not delete entries or append log records.
+// snapshot publication and AOF rotation finish. Capture does not delete entries
+// or append log records.
 func (s *Store) captureSnapshotLocked() (persistence.Snapshot, error) {
 	checkpoint := s.mutationLog.LastSequence()
 	now := time.Now()

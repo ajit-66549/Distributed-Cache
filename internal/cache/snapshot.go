@@ -12,8 +12,8 @@ type snapshotWriter interface {
 	SaveSnapshot(snapshot persistence.Snapshot) error
 }
 
-// SaveSnapshot pauses cache operations through capture and durable publication.
-// The attached log owns encoding, file creation, synchronization, and rename.
+// SaveSnapshot pauses cache operations through capture, durable publication,
+// and AOF rotation. The attached log owns encoding and filesystem operations.
 func (s *Store) SaveSnapshot() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
