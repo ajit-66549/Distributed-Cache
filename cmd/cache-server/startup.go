@@ -13,7 +13,7 @@ import (
 // openStore restores the cache before it can receive HTTP requests. The caller
 // owns the returned writer and closes it after draining requests on shutdown.
 func openStore(cfg config.Config) (*cache.Store, *persistence.AOF, error) {
-	writer, err := persistence.OpenAOF(cfg.DataDir, cfg.MaxBytes)
+	writer, snapshot, err := persistence.OpenAOFWithSnapshot(cfg.DataDir, cfg.MaxBytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open cache persistence: %w", err)
 	}
@@ -23,7 +23,14 @@ func openStore(cfg config.Config) (*cache.Store, *persistence.AOF, error) {
 		return nil, nil, errors.Join(err, writer.Close())
 	}
 
-	if err := writer.Replay(store.ApplyRecoveredRecord); err != nil {
+	var checkpoint uint64
+	if snapshot != nil {
+		if err := store.RestoreSnapshot(*snapshot); err != nil {
+			return nil, nil, errors.Join(fmt.Errorf("restore snapshot: %w", err), writer.Close())
+		}
+		checkpoint = snapshot.Header.Checkpoint
+	}
+	if err := writer.ReplayAfter(checkpoint, store.ApplyRecoveredRecord); err != nil {
 		return nil, nil, errors.Join(fmt.Errorf("recover cache: %w", err), writer.Close())
 	}
 

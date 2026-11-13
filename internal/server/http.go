@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ajit-66549/distributed-cache/internal/cache"
+	"github.com/ajit-66549/distributed-cache/internal/persistence"
 )
 
 type Cache interface {
@@ -98,8 +99,10 @@ func (h *Handler) Set(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, cache.ErrEntryTooLarge) {
+		if errors.Is(err, cache.ErrEntryTooLarge) || errors.Is(err, persistence.ErrRecordTooLarge) {
 			status = http.StatusRequestEntityTooLarge
+		} else if errors.Is(err, cache.ErrExpirationOutOfRange) {
+			status = http.StatusBadRequest
 		}
 		writeJSON(w, status, errorResponse{
 			Error: err.Error(),

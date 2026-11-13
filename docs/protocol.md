@@ -2,13 +2,13 @@
 
 ## 1. Protocol Overview
 
-The first version of the cache will use an HTTP API with JSON request and response bodies.
+The cache uses an HTTP API with JSON request and response bodies.
 
 A custom TCP protocol may be added later.
 
 ## 2. Supported Operations
 
-The initial API supports:
+The API supports:
 
 * `SET`
 * `GET`
@@ -34,9 +34,10 @@ NAME
 
 ### Values
 
-* A value must initially be a string.
-* A value cannot be larger than 1 MB.
+* Values are strings.
+* A value cannot be larger than 1 MiB (1,048,576 bytes).
 * An empty string is allowed as a value.
+* The current JSON decoder treats an omitted or `null` value as an empty string.
 
 ### TTL
 
@@ -45,6 +46,9 @@ NAME
 * TTL must be a positive integer.
 * A key without a TTL does not automatically expire.
 * Updating a key replaces its previous value and TTL.
+* Expiration deadlines are preserved across snapshots and restarts; downtime does not restart a TTL.
+
+TTL seconds must fit Go's `time.Duration` after conversion to nanoseconds. Values above 9,223,372,036 seconds return `400 Bad Request` before reaching the cache. The resulting expiration must also fit the signed 64-bit Unix-nanosecond timestamp used by persistence; an unsupported deadline returns `400` without changing entries or writing a mutation.
 
 ## 4. SET Operation
 
@@ -81,14 +85,14 @@ Request body with TTL:
 Status:
 
 ```text
-200 OK
+201 Created
 ```
 
 Body:
 
 ```json
 {
-  "status": "ok"
+  "status": "stored"
 }
 ```
 
@@ -102,6 +106,8 @@ Body:
 * The cache counts the bytes in each key and value toward its memory budget.
 * When a write needs space, the cache evicts the least recently used entries until it fits. Successful reads and writes make an entry most recently used.
 * If the key and value together exceed the entire budget, the write returns `413 Request Entity Too Large`. The cache preserves existing entries, including the old value and TTL when an update is rejected.
+* The complete mutation batch, including eviction DELETEs, is written and synced to the AOF before cache memory changes and success is returned.
+* Snapshot capture, publication, and AOF rotation pause cache operations. A write is acknowledged after its own AOF sync and memory update; it does not wait for the next scheduled snapshot.
 
 ### Entry exceeds the cache memory budget
 
@@ -135,7 +141,6 @@ Body:
 
 ```json
 {
-  "key": "name",
   "value": "Ajit"
 }
 ```
@@ -145,14 +150,13 @@ Body:
 Status:
 
 ```text
-200 OK
+404 Not Found
 ```
 
 Body:
 
 ```json
 {
-  "key": "name",
   "value": null
 }
 ```
@@ -189,7 +193,7 @@ Body:
 
 ```json
 {
-  "deleted": true
+  "status": "deleted"
 }
 ```
 
@@ -198,18 +202,18 @@ Body:
 Status:
 
 ```text
-200 OK
+404 Not Found
 ```
 
 Body:
 
 ```json
 {
-  "deleted": false
+  "error": "key not found"
 }
 ```
 
-Deleting a missing or expired key is not considered a server error.
+A missing key returns `404` and creates no AOF record. If an expired entry is still physically present before lazy or background cleanup removes it, DELETE can remove and log it, returning `200`. A successful deletion is synced to the AOF before removal from memory and acknowledgment.
 
 ## 7. PING Operation
 
@@ -235,7 +239,7 @@ Body:
 
 ```json
 {
-  "message": "PONG"
+  "status": "ok"
 }
 ```
 
@@ -247,103 +251,57 @@ Validation errors return:
 400 Bad Request
 ```
 
-### Empty key
+The response uses a string-valued `error` field, for example:
 
 ```json
 {
-  "error": {
-    "code": "INVALID_KEY",
-    "message": "Key cannot be empty."
-  }
+  "error": "invalid JSON"
 }
 ```
 
-### Key is too long
+| Condition | Error message |
+| --- | --- |
+| Key exceeds 256 bytes | `key exceeds maximum length` |
+| Value exceeds 1 MiB | `value exceeds maximum size` |
+| TTL is zero or negative | `ttl must be greater than zero` |
+| TTL seconds exceed the supported duration | `ttl exceeds maximum supported duration` |
+| Expiration exceeds the persisted timestamp range | `expiration is outside the Unix nanosecond range` |
+| Invalid JSON or incompatible field types | `invalid JSON` |
 
-```json
-{
-  "error": {
-    "code": "KEY_TOO_LARGE",
-    "message": "Key cannot exceed 256 bytes."
-  }
-}
-```
-
-### Missing value
-
-```json
-{
-  "error": {
-    "code": "VALUE_REQUIRED",
-    "message": "A value is required."
-  }
-}
-```
-
-### Value is too large
-
-```json
-{
-  "error": {
-    "code": "VALUE_TOO_LARGE",
-    "message": "Value cannot exceed 1 MB."
-  }
-}
-```
-
-### Invalid TTL
-
-```json
-{
-  "error": {
-    "code": "INVALID_TTL",
-    "message": "TTL must be a positive integer."
-  }
-}
-```
-
-### Invalid JSON
-
-```json
-{
-  "error": {
-    "code": "INVALID_REQUEST",
-    "message": "The request body contains invalid JSON."
-  }
-}
-```
+A URL without the required key segment may be rejected by the HTTP router before reaching a cache handler. Missing or `null` values currently become empty strings instead of producing a validation error.
 
 ## 9. Server Errors
 
-Unexpected server errors return:
+Cache-operation failures return:
 
 ```text
 500 Internal Server Error
 ```
 
-Body:
+DELETE logs the underlying error and returns:
 
 ```json
 {
-  "error": {
-    "code": "INTERNAL_ERROR",
-    "message": "The cache could not process the request."
-  }
+  "error": "failed to delete key"
 }
 ```
 
-Internal details must be written to server logs and should not be exposed to the client.
+SET returns the underlying cache or persistence error text in the same string-valued `error` field. A key/value pair exceeding the cache budget or a mutation record exceeding the persistence format limit returns `413 Request Entity Too Large`. An expiration outside the persisted timestamp range returns `400 Bad Request`. These classifications also apply when the underlying errors are wrapped with additional context.
+
+After an append or sync failure, further mutations are rejected until restart. A failed or unanswered write can still leave a complete record on storage, so its final outcome is unknown; clients do not receive an exactly-once retry guarantee. See the [persistence design](design.md#9-persistence) for details.
+
+Periodic snapshots run at `CACHE_SNAPSHOT_INTERVAL`, defaulting to `1m`. Snapshot publication or rotation failure stops the worker and initiates application shutdown. There is no separate HTTP endpoint for saving a snapshot.
 
 ## 10. Request and Response Summary
 
-| Operation             | Success response                |
-| --------------------- | ------------------------------- |
-| `SET key value`       | `{"status":"ok"}`               |
-| `GET existing-key`    | `{"key":"key","value":"value"}` |
-| `GET missing-key`     | `{"key":"key","value":null}`    |
-| `DELETE existing-key` | `{"deleted":true}`              |
-| `DELETE missing-key`  | `{"deleted":false}`             |
-| `PING`                | `{"message":"PONG"}`            |
+| Operation | HTTP status | Response |
+| --- | --- | --- |
+| `SET key value` | `201 Created` | `{"status":"stored"}` |
+| `GET existing-key` | `200 OK` | `{"value":"value"}` |
+| `GET missing-key` | `404 Not Found` | `{"value":null}` |
+| `DELETE existing-key` | `200 OK` | `{"status":"deleted"}` |
+| `DELETE missing-key` | `404 Not Found` | `{"error":"key not found"}` |
+| `PING` | `200 OK` | `{"status":"ok"}` |
 
 ## 11. Future Protocol Features
 

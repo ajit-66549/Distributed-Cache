@@ -2,16 +2,20 @@ package server
 
 import (
 	"errors"
+	"math"
+	"time"
 )
 
 const maxKeyLength = 256
 const maxValueSize = 1 << 20 // 1 MiB
+const maxTTLSeconds = math.MaxInt64 / int64(time.Second)
 
 var (
 	errKeyRequired   = errors.New("Key is required")
 	errKeyTooLong    = errors.New("key exceeds maximum length")
 	errValueTooLarge = errors.New("value exceeds maximum size")
 	errTTLInvalid    = errors.New("ttl must be greater than zero")
+	errTTLTooLarge   = errors.New("ttl exceeds maximum supported duration")
 )
 
 func validateKey(key string) error {
@@ -34,8 +38,14 @@ func valueValidate(value string) error {
 }
 
 func validateTTL(ttlSeconds *int64) error {
-	if ttlSeconds != nil && *ttlSeconds <= 0 {
+	if ttlSeconds == nil {
+		return nil
+	}
+	if *ttlSeconds <= 0 {
 		return errTTLInvalid
+	}
+	if *ttlSeconds > maxTTLSeconds {
+		return errTTLTooLarge
 	}
 	return nil
 }
