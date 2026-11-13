@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ajit-66549/distributed-cache/internal/cache"
+	"github.com/ajit-66549/distributed-cache/internal/persistence"
 )
 
 type fakeCache struct {
@@ -484,6 +486,10 @@ func TestSetReturnsWriteErrors(t *testing.T) {
 	}{
 		{name: "oversized", err: cache.ErrEntryTooLarge, status: http.StatusRequestEntityTooLarge},
 		{name: "wrapped oversized", err: fmt.Errorf("write failed: %w", cache.ErrEntryTooLarge), status: http.StatusRequestEntityTooLarge},
+		{name: "oversized persistence record", err: persistence.ErrRecordTooLarge, status: http.StatusRequestEntityTooLarge},
+		{name: "wrapped oversized persistence record", err: fmt.Errorf("encode failed: %w", persistence.ErrRecordTooLarge), status: http.StatusRequestEntityTooLarge},
+		{name: "expiration out of range", err: cache.ErrExpirationOutOfRange, status: http.StatusBadRequest},
+		{name: "wrapped expiration out of range", err: fmt.Errorf("prepare mutation: %w", cache.ErrExpirationOutOfRange), status: http.StatusBadRequest},
 		{name: "unexpected", err: errors.New("storage unavailable"), status: http.StatusInternalServerError},
 	}
 	for _, withTTL := range []bool{false, true} {
@@ -585,5 +591,82 @@ func TestDeleteRejectsInvalidKey(t *testing.T) {
 	}
 	if !fake.found || fake.value != "keep" {
 		t.Error("invalid DELETE request changed the cache")
+	}
+}
+
+func TestSetChecksTTLBeforeDurationConversion(t *testing.T) {
+	limit := int64(math.MaxInt64 / int64(time.Second))
+	for _, test := range []struct {
+		name    string
+		seconds int64
+		status  int
+	}{
+		{name: "largest safe duration", seconds: limit, status: http.StatusCreated},
+		{name: "first overflow", seconds: limit + 1, status: http.StatusBadRequest},
+		{name: "maximum integer", seconds: math.MaxInt64, status: http.StatusBadRequest},
+		{name: "would wrap to zero", seconds: 1 << 55, status: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeCache{key: "name", value: "keep", found: true}
+			body := fmt.Sprintf(`{"value":"new","ttl_seconds":%d}`, test.seconds)
+			request := httptest.NewRequest(http.MethodPut, "/v1/cache/name", strings.NewReader(body))
+			recorder := httptest.NewRecorder()
+			NewHandler(fake).Routes().ServeHTTP(recorder, request)
+			if recorder.Code != test.status {
+				t.Fatalf("status = %d, want %d; body = %s", recorder.Code, test.status, recorder.Body.String())
+			}
+			if test.status == http.StatusCreated {
+				if !fake.setWithTTLCalled || fake.ttl <= 0 || int64(fake.ttl/time.Second) != test.seconds {
+					t.Fatalf("safe TTL was changed during conversion: %s", fake.ttl)
+				}
+			} else if fake.setCalled || fake.setWithTTLCalled || fake.value != "keep" || !fake.found {
+				t.Fatal("overflowing TTL reached the cache or changed its existing value")
+			}
+		})
+	}
+}
+
+type deadlineTestLog struct {
+	records []persistence.Record
+}
+
+func (log *deadlineTestLog) LastSequence() uint64 { return uint64(len(log.records)) }
+
+func (log *deadlineTestLog) Append(record persistence.Record) error {
+	log.records = append(log.records, record)
+	return nil
+}
+
+func TestSetRejectsUnpersistableDeadlineWithoutMutation(t *testing.T) {
+	log := &deadlineTestLog{}
+	store, err := cache.NewStoreWithLog(8, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"a", "b"} {
+		if err := store.Set(key, "xxx"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// This duration fits int64, but adding it to today's time exceeds the
+	// signed Unix-nanosecond deadline range used by persistence.
+	seconds := int64(math.MaxInt64 / int64(time.Second))
+	body := fmt.Sprintf(`{"value":"xxx","ttl_seconds":%d}`, seconds)
+	request := httptest.NewRequest(http.MethodPut, "/v1/cache/c", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+	NewHandler(store).Routes().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", recorder.Code, recorder.Body.String())
+	}
+	if len(log.records) != 2 || store.Len() != 2 {
+		t.Fatal("invalid deadline appended a mutation or changed cache membership")
+	}
+	for _, key := range []string{"a", "b"} {
+		if value, found := store.Get(key); !found || value != "xxx" {
+			t.Fatalf("invalid deadline evicted or changed existing key %q", key)
+		}
+	}
+	if _, found := store.Get("c"); found {
+		t.Fatal("invalid deadline was stored")
 	}
 }

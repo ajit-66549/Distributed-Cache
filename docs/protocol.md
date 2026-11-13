@@ -48,7 +48,7 @@ NAME
 * Updating a key replaces its previous value and TTL.
 * Expiration deadlines are preserved across snapshots and restarts; downtime does not restart a TTL.
 
-The current handler validates positive `int64` seconds but does not explicitly check overflow when converting seconds to Go's `time.Duration`. Upper-bound validation for that conversion remains outstanding.
+TTL seconds must fit Go's `time.Duration` after conversion to nanoseconds. Values above 9,223,372,036 seconds return `400 Bad Request` before reaching the cache. The resulting expiration must also fit the signed 64-bit Unix-nanosecond timestamp used by persistence; an unsupported deadline returns `400` without changing entries or writing a mutation.
 
 ## 4. SET Operation
 
@@ -264,6 +264,8 @@ The response uses a string-valued `error` field, for example:
 | Key exceeds 256 bytes | `key exceeds maximum length` |
 | Value exceeds 1 MiB | `value exceeds maximum size` |
 | TTL is zero or negative | `ttl must be greater than zero` |
+| TTL seconds exceed the supported duration | `ttl exceeds maximum supported duration` |
+| Expiration exceeds the persisted timestamp range | `expiration is outside the Unix nanosecond range` |
 | Invalid JSON or incompatible field types | `invalid JSON` |
 
 A URL without the required key segment may be rejected by the HTTP router before reaching a cache handler. Missing or `null` values currently become empty strings instead of producing a validation error.
@@ -284,7 +286,7 @@ DELETE logs the underlying error and returns:
 }
 ```
 
-SET currently returns the underlying cache or persistence error text in the same string-valued `error` field. A key/value pair exceeding the cache budget returns `413` instead; exceeding the persistence record-size limit currently returns `500`.
+SET returns the underlying cache or persistence error text in the same string-valued `error` field. A key/value pair exceeding the cache budget or a mutation record exceeding the persistence format limit returns `413 Request Entity Too Large`. An expiration outside the persisted timestamp range returns `400 Bad Request`. These classifications also apply when the underlying errors are wrapped with additional context.
 
 After an append or sync failure, further mutations are rejected until restart. A failed or unanswered write can still leave a complete record on storage, so its final outcome is unknown; clients do not receive an exactly-once retry guarantee. See the [persistence design](design.md#9-persistence) for details.
 

@@ -171,7 +171,7 @@ Eviction planning, logging, and applying the mutation must share one coordinated
 
 * A successful `PUT` returns the existing `201 Created` response only after the record has been synchronized and applied.
 * A successful `DELETE` returns `200 OK` only after its removal has been synchronized and applied. The store returns both a deletion flag and a possible persistence error.
-* Invalid input, an entry exceeding the memory budget, or a record exceeding the format limit is rejected before append and before any eviction or memory change. The HTTP handler returns `413 Request Entity Too Large` for an entry exceeding the memory budget; a record exceeding the format limit currently returns `500 Internal Server Error`.
+* Invalid input, an entry exceeding the memory budget, or a record exceeding the format limit is rejected before append and before any eviction or memory change. The HTTP handler returns `413 Request Entity Too Large` for either an entry exceeding the memory budget or a mutation record exceeding the persistence format limit, including wrapped errors.
 * A `DELETE` that finds no stored entry remains `404 Not Found` and creates no log record. An expired entry still physically present may be deleted and logged, preserving the current store's deletion behavior.
 * `GET` and `PING` create no log records. `GET` still updates live LRU order.
 * Expiration cleanup requires no delete records because the original absolute deadline already represents expiration durably.
@@ -236,7 +236,7 @@ The codecs are implemented in [`internal/persistence/header.go`](../internal/per
 
 ### 9.5 TTL and eviction recovery
 
-A TTL is converted to an absolute expiration deadline once, while preparing its original write, and persisted as a signed 64-bit Unix-nanosecond timestamp. Cache-to-log conversion rejects deadlines outside that timestamp range. The HTTP handler currently checks that TTL seconds are positive but does not explicitly guard overflow when converting seconds to `time.Duration`; upper-bound input validation remains outstanding. Disk latency and server downtime do not extend a valid saved deadline. Replacing a value also replaces its deadline; a `SET` without TTL stores `null` and clears any earlier expiration.
+A TTL is converted to an absolute expiration deadline once, while preparing its original write, and persisted as a signed 64-bit Unix-nanosecond timestamp. The HTTP handler requires positive TTL seconds no greater than `math.MaxInt64 / int64(time.Second)` before converting to `time.Duration`, preventing multiplication overflow. Cache-to-log conversion rejects deadlines outside the persisted timestamp range. Both invalid durations and unsupported deadlines return `400 Bad Request` before appending or applying the mutation. Disk latency and server downtime do not extend the saved deadline. Replacing a value also replaces its deadline; a `SET` without TTL stores `null` and clears any earlier expiration.
 
 For example, a value stored at `10:00:00` with a five-second TTL expires at `10:00:05`. Starting the server at `10:00:10` must leave that key absent.
 
