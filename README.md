@@ -78,5 +78,7 @@ See the [API protocol](docs/protocol.md) for request and response details and th
 guarantees, and limits.
 
 Phase 8 starts with the [planned observability contract](docs/observability.md)
-and [engine benchmark baseline](benchmarks/results.md). Metrics instrumentation
-and health/readiness endpoints are not implemented yet.
+and [engine benchmark baseline](benchmarks/results.md). The
+[metrics package](internal/metrics/metrics.go) provides counters, gauges, and
+request-duration histograms. Cache/HTTP instrumentation and metrics/health/readiness
+endpoints are not implemented yet.

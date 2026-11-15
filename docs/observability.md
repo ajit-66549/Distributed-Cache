@@ -1,7 +1,7 @@
 # Phase 8 measurement contract
 
-Status: definitions for Phase 8 Task 1. Metrics, instrumentation, and the new
-endpoints are planned; this document does not mean they are implemented.
+Status: Phase 8 Task 1 definitions and Task 3 metrics package are implemented.
+Cache/HTTP instrumentation and the new endpoints remain planned.
 
 This contract describes the current single-node cache. It preserves HTTP
 responses, TTL behavior, LRU behavior, and the rule that mutations are synced to
@@ -22,15 +22,17 @@ counter rules; engine counters need not equal HTTP request counts.
 
 Metric collection is read-only: it must not call GET, change LRU order, clean up
 expired entries, append records, or save snapshots. Concurrent collection and
-updates must be race-free. Read stored gauges as a consistent snapshot under a
-brief cache lock; avoid scanning all entries or holding the lock while formatting
-the HTTP response. Preserve cache-before-AOF lock order and avoid introducing a
-metrics lock that reverses that order.
+updates must be race-free. The cache owner captures and publishes stored gauges
+as one snapshot while holding its cache lock. Collection reads the published
+snapshot without acquiring cache/AOF locks, scanning entries, or holding a lock
+while formatting the HTTP response. Preserve cache-before-AOF lock order and
+avoid introducing a metrics lock that reverses that order.
 
 ## 2. Required measurements
 
 Names and units below are the contract for later instrumentation. The metrics
-library and exporter will be selected in a later task.
+package uses the Prometheus Go client with a private registry per instance.
+HTTP exporter wiring belongs to a later task.
 
 | Metric | Type | Labels | Definition |
 | --- | --- | --- | --- |
@@ -204,3 +206,43 @@ deterministic assertions.
 
 Run race checks once instrumentation exists. Keep the uninstrumented engine
 baseline and its limitations in [the benchmark record](../benchmarks/results.md).
+
+## 8. Metrics package (Task 3)
+
+[`internal/metrics`](../internal/metrics/metrics.go) provides the measurements
+without importing the cache or server packages. `New()` creates an independent
+instance; it does not modify Prometheus's global registry. Its methods support
+concurrent updates and collection. The zero value is not usable.
+
+| API | Purpose |
+| --- | --- |
+| `RecordHit()`, `RecordMiss()` | Record engine lookup outcomes. |
+| `AddEvictions(count)` | Record victims after a successful batch applies. |
+| `RecordLazyExpiration()`, `AddCleanupExpirations(count)` | Record TTL removals with the two allowed sources. The caller separately records a lazy-expiration GET miss. |
+| `SetCacheStats(CacheStats)` | Publish used bytes, maximum bytes, and physical item count as one snapshot. Invalid negative values or used bytes above the maximum return an error without changing gauges. |
+| `ObserveRequest(method, route, status, elapsed)` | Record one request count and duration observation, excluding probe/profiling routes. |
+| `Gatherer()` | Supply collection access for tests and the future exporter. |
+
+Counters and published cache gauges start at zero. HTTP label combinations are
+created on first observation, so their metric families are absent until a request
+is observed. Both expiration sources are present at zero from construction. Heap
+usage is sampled from the Go runtime on each collection and covers the process
+shared by all instances.
+
+`ObserveRequest` accepts a path template without a method prefix. Unknown methods
+map to `OTHER`; unknown routes map to `unmatched`. Status zero represents an abort
+before a final response, and statuses outside 200 through 599 also map to
+`aborted`. Negative elapsed durations are clamped to zero. The HTTP middleware
+will own actual routing, first-final-status detection, and timing in Task 6;
+passing a raw key path never exposes that key as a metric label.
+
+`SetCacheStats` copies values into a snapshot protected by a short metrics lock.
+The future cache integration must capture and publish the snapshot while holding
+the cache lock, preserving mutation order. Collection copies the entire snapshot
+and releases the metrics lock before emitting measurements; it never calls back
+into the cache. Cache/HTTP integration, lifecycle readiness, and route installation
+are not part of Task 3.
+
+Package tests cover counter totals, metric definitions, histogram boundaries and
+overflow, bounded labels, probe exclusions, rejected snapshots, independent
+instances, and concurrent updates with consistent gauge collection.
