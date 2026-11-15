@@ -479,6 +479,11 @@ The completed system should measure:
 
 Latency results should include at least p50, p95, and p99 values.
 
+The Phase 8 [observability contract](observability.md) defines the planned
+single-node metrics, counting rules, HTTP timing, and health/readiness semantics.
+The [benchmark record](../benchmarks/results.md) preserves the uninstrumented
+engine baseline. Instrumentation and the new endpoints remain future work.
+
 ## 15. Planned Development Order
 
 1. Define the project contract.

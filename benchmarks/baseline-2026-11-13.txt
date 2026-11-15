@@ -1,0 +1,66 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/ajit-66549/distributed-cache/internal/cache
+cpu: Apple M3
+BenchmarkGet/entries=16   	26857026	        41.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=16   	28906142	        41.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=16   	30166101	        45.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=16   	27756120	        46.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=16   	26112690	        45.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=1024 	25936692	        42.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=1024 	27825145	        49.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=1024 	27106009	        46.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=1024 	27087475	        45.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=1024 	27098103	        43.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=65536         	20934111	        49.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=65536         	20598824	        48.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=65536         	21940298	        51.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=65536         	19310727	        52.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/entries=65536         	24126229	        50.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=16     	43754899	        27.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=16     	42060679	        27.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=16     	43514983	        29.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=16     	42300934	        28.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=16     	42102984	        27.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=1024   	38711290	        32.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=1024   	38014281	        31.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=1024   	38725707	        31.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=1024   	38650401	        34.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=1024   	38408449	        31.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=65536  	28150868	        37.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=65536  	27396451	        37.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=65536  	31741369	        39.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=65536  	26726751	        38.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/update/entries=65536  	27234608	        39.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSet/evict/entries=16      	 9322167	       125.3 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=16      	 9434301	       124.9 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=16      	 7888916	       159.3 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=16      	 8652446	       124.1 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=16      	 9724357	       124.9 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=1024    	 8595146	       139.9 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=1024    	 8642533	       140.4 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=1024    	 8478837	       139.1 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=1024    	 8502310	       145.8 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=1024    	 8641000	       140.3 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=65536   	 6172532	       190.0 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=65536   	 6375273	       187.9 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=65536   	 6397048	       186.0 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=65536   	 6330039	       190.5 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSet/evict/entries=65536   	 6436918	       190.4 ns/op	     128 B/op	       3 allocs/op
+BenchmarkSetEvictionCycle/victims=8         	 1000000	      1055 ns/op	         9.000 writes/op	    1216 B/op	      21 allocs/op
+BenchmarkSetEvictionCycle/victims=8         	 1000000	      1048 ns/op	         9.000 writes/op	    1216 B/op	      21 allocs/op
+BenchmarkSetEvictionCycle/victims=8         	 1000000	      1047 ns/op	         9.000 writes/op	    1216 B/op	      21 allocs/op
+BenchmarkSetEvictionCycle/victims=8         	 1000000	      1083 ns/op	         9.000 writes/op	    1216 B/op	      21 allocs/op
+BenchmarkSetEvictionCycle/victims=8         	 1000000	      1075 ns/op	         9.000 writes/op	    1216 B/op	      21 allocs/op
+BenchmarkSetEvictionCycle/victims=64        	  138807	     10393 ns/op	        65.00 writes/op	    9408 B/op	     136 allocs/op
+BenchmarkSetEvictionCycle/victims=64        	  132930	      8876 ns/op	        65.00 writes/op	    9408 B/op	     136 allocs/op
+BenchmarkSetEvictionCycle/victims=64        	  139335	      8581 ns/op	        65.00 writes/op	    9408 B/op	     136 allocs/op
+BenchmarkSetEvictionCycle/victims=64        	  138199	      8636 ns/op	        65.00 writes/op	    9408 B/op	     136 allocs/op
+BenchmarkSetEvictionCycle/victims=64        	  138952	      8683 ns/op	        65.00 writes/op	    9408 B/op	     136 allocs/op
+BenchmarkSetEvictionCycle/victims=512       	   16144	     69302 ns/op	       513.0 writes/op	   76224 B/op	    1035 allocs/op
+BenchmarkSetEvictionCycle/victims=512       	   17439	     68641 ns/op	       513.0 writes/op	   76224 B/op	    1035 allocs/op
+BenchmarkSetEvictionCycle/victims=512       	   17688	     68388 ns/op	       513.0 writes/op	   76224 B/op	    1035 allocs/op
+BenchmarkSetEvictionCycle/victims=512       	   17625	     68095 ns/op	       513.0 writes/op	   76224 B/op	    1035 allocs/op
+BenchmarkSetEvictionCycle/victims=512       	   17575	     67982 ns/op	       513.0 writes/op	   76224 B/op	    1035 allocs/op
+PASS
+ok  	github.com/ajit-66549/distributed-cache/internal/cache	82.681s

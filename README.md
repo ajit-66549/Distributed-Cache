@@ -76,3 +76,7 @@ acknowledged mutations.
 See the [API protocol](docs/protocol.md) for request and response details and the
 [persistence design](docs/design.md#9-persistence) for file formats, durability
 guarantees, and limits.
+
+Phase 8 starts with the [planned observability contract](docs/observability.md)
+and [engine benchmark baseline](benchmarks/results.md). Metrics instrumentation
+and health/readiness endpoints are not implemented yet.
