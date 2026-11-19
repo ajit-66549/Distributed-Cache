@@ -1,8 +1,8 @@
 # Phase 8 measurement contract
 
-Status: Phase 8 Task 1 definitions, Task 3 metrics package, and Task 4 GET hit/miss
-instrumentation are implemented. Removal/size instrumentation, HTTP
-instrumentation, and the new endpoints remain planned.
+Status: Phase 8 Task 1 definitions, Task 3 metrics package, Task 4 GET hit/miss
+instrumentation, and Task 5 removal/size instrumentation are implemented.
+HTTP instrumentation and the new endpoints remain planned.
 
 This contract describes the current single-node cache. It preserves HTTP
 responses, TTL behavior, LRU behavior, and the rule that mutations are synced to
@@ -238,8 +238,8 @@ will own actual routing, first-final-status detection, and timing in Task 6;
 passing a raw key path never exposes that key as a metric label.
 
 `SetCacheStats` copies values into a snapshot protected by a short metrics lock.
-The future cache integration must capture and publish the snapshot while holding
-the cache lock, preserving mutation order. Collection copies the entire snapshot
+The cache integration captures and publishes the snapshot while holding the
+cache lock, preserving mutation order. Collection copies the entire snapshot
 and releases the metrics lock before emitting measurements; it never calls back
 into the cache. Cache/HTTP integration, lifecycle readiness, and route installation
 are not part of Task 3.
@@ -252,7 +252,7 @@ instances, and concurrent updates with consistent gauge collection.
 
 `cache.WithMetrics(measurements)` attaches an existing metrics instance when
 constructing a store. `NewStore`, `NewStoreWithLimit`, and `NewStoreWithLog` accept
-this optional setting; callers that omit it have lookup instrumentation disabled.
+this optional setting; callers that omit it have cache instrumentation disabled.
 The server creates one instance at startup and passes it through recovery to the
 store before serving requests. Snapshot restoration and AOF replay do not call
 GET and therefore do not add lookup events.
@@ -268,7 +268,41 @@ These updates happen under the existing cache lock. SET, DELETE, cleanup, and
 recovery do not increment lookup counters. Two successful GETs followed by one
 absent-key GET produce two hits and one miss on a fresh instance.
 
-Only lookup counters are connected in Task 4. Lazy-expiration removal counts,
-other removal counts, size gauges, HTTP measurements, and metrics/probe endpoints
-remain for the following tasks. The counters can currently be collected through
-the supplied instance's `Gatherer()`.
+Task 4 connects lookup counters; Task 5 adds removal counters and size gauges as
+described below. HTTP measurements and metrics/probe endpoints remain future work.
+The measurements can currently be collected through the supplied instance's
+`Gatherer()`.
+
+## 10. Removal and size instrumentation (Task 5)
+
+Stores with metrics attached publish the configured byte budget, zero used
+bytes, and zero items during construction. Size updates use the existing byte
+accounting and map length; no entry scan is needed to collect the gauges.
+
+| Operation | Measurement update |
+| --- | --- |
+| Successful SET or replacement | Publish final stored bytes and item count after the full mutation batch. Count the actual LRU victims as evictions. |
+| Failed or rejected SET | No size or eviction measurement changes; planned victims were not removed. |
+| Successful DELETE | Publish the remaining bytes and items, without incrementing removal counters. |
+| Missing or failed DELETE | No size or removal measurement changes. |
+| GET removes an expired entry | Record one miss and one `lazy` expiration, then publish the remaining size. |
+| Runtime cleanup removes N expired entries | Add N `cleanup` expirations and publish size once after the batch. An empty pass adds nothing. |
+| Snapshot restore or AOF replay | Publish the recovered physical size without incrementing runtime lookup or removal counters. |
+| Snapshot capture | No size or removal changes; skipping expired entries in a snapshot does not remove them from the running store. |
+
+Runtime SET instrumentation runs only after the durable append succeeds and
+the complete in-memory batch applies. Low-level insertion and removal helpers
+do not publish partial sizes or guess the removal reason; this also keeps
+recovered DELETE records from inflating eviction counters.
+
+`FinishRecovery()` performs startup's final expiration pass without counting
+runtime cleanup events and publishes the final size before requests are served.
+The background worker continues to use `DeleteExpired()`, which records runtime
+cleanup removals. Expired entries selected by LRU pressure count as evictions;
+explicit deletes and replacements do not count as expiration removals.
+
+`publishSizeMetricsLocked()` publishes used bytes, maximum bytes, and items as
+one snapshot while the cache lock is held, or while a constructor owns an
+unpublished store. Collection never acquires a cache lock. An invalid snapshot
+indicates an internal accounting problem and is logged without changing the
+result of a durable mutation that has already applied.

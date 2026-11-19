@@ -34,7 +34,7 @@ func openStore(cfg config.Config, options ...cache.Option) (*cache.Store, *persi
 		return nil, nil, errors.Join(fmt.Errorf("recover cache: %w", err), writer.Close())
 	}
 
-	store.DeleteExpired()
+	store.FinishRecovery()
 	log.Printf("cache recovered from %s through sequence %d (%d live entries)", cfg.DataDir, writer.LastSequence(), store.Len())
 	return store, writer, nil
 }

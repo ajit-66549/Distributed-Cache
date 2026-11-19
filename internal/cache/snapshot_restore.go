@@ -32,5 +32,6 @@ func (s *Store) RestoreSnapshot(snapshot persistence.Snapshot) error {
 		}
 		s.applySetLocked(saved.Key, entry, calculateEntrySize(saved.Key, entry.Value), nil)
 	}
+	s.publishSizeMetricsLocked()
 	return nil
 }

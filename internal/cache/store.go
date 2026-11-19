@@ -32,7 +32,7 @@ type Store struct {
 // Option configures a store before it is used.
 type Option func(*Store)
 
-// WithMetrics enables lookup counters using the supplied metrics instance.
+// WithMetrics enables cache counters and size gauges using the supplied instance.
 // A nil instance leaves instrumentation disabled.
 func WithMetrics(measurements *metrics.Metrics) Option {
 	return func(store *Store) {
@@ -41,14 +41,19 @@ func WithMetrics(measurements *metrics.Metrics) Option {
 }
 
 func NewStore(options ...Option) *Store {
+	return newStore(DefaultMaxBytes, options...)
+}
+
+func newStore(maxBytes int64, options ...Option) *Store {
 	store := &Store{
 		entries:  make(map[string]*list.Element),
 		lru:      list.New(),
-		maxBytes: DefaultMaxBytes,
+		maxBytes: maxBytes,
 	}
 	for _, option := range options {
 		option(store)
 	}
+	store.publishSizeMetricsLocked()
 	return store
 }
 
@@ -58,9 +63,7 @@ func NewStoreWithLimit(maxBytes int64, options ...Option) (*Store, error) {
 		return nil, errors.New("maximum cache size must be greater than zero")
 	}
 
-	store := NewStore(options...)
-	store.maxBytes = maxBytes
-	return store, nil
+	return newStore(maxBytes, options...), nil
 }
 
 // NewStoreWithLog creates a store with a supplied mutation log.
@@ -113,6 +116,10 @@ func (s *Store) setLocked(key string, entry Entry) error {
 		return err
 	}
 	s.applySetLocked(key, entry, size, victims)
+	if s.metrics != nil && len(victims) > 0 {
+		s.metrics.AddEvictions(uint64(len(victims)))
+	}
+	s.publishSizeMetricsLocked()
 	return nil
 }
 
@@ -173,7 +180,9 @@ func (s *Store) Get(key string) (string, bool) {
 		s.removeElementLocked(element)
 		if s.metrics != nil {
 			s.metrics.RecordMiss()
+			s.metrics.RecordLazyExpiration()
 		}
+		s.publishSizeMetricsLocked()
 		return "", false
 	}
 
@@ -199,6 +208,7 @@ func (s *Store) Delete(key string) (bool, error) {
 	}
 
 	s.removeElementLocked(element)
+	s.publishSizeMetricsLocked()
 
 	return true, nil
 }
@@ -214,7 +224,19 @@ func (s *Store) DeleteExpired() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	deleted := s.deleteExpiredLocked(time.Now())
+	if deleted > 0 {
+		if s.metrics != nil {
+			s.metrics.AddCleanupExpirations(uint64(deleted))
+		}
+		s.publishSizeMetricsLocked()
+	}
+	return deleted
+}
+
+// deleteExpiredLocked removes entries without recording a removal reason. The
+// caller owns runtime event counting and publishes gauges after the full batch.
+func (s *Store) deleteExpiredLocked(now time.Time) int {
 	deleted := 0
 
 	for _, element := range s.entries {

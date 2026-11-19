@@ -7,6 +7,17 @@ import (
 	"github.com/ajit-66549/distributed-cache/internal/persistence"
 )
 
+// FinishRecovery removes entries that expired during restoration and publishes
+// the final size gauges without recording runtime expiration events. Call only
+// at startup, after snapshot restoration and log replay, before serving requests.
+func (s *Store) FinishRecovery() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.deleteExpiredLocked(time.Now())
+	s.publishSizeMetricsLocked()
+}
+
 // ApplyRecoveredRecord restores one record without appending it to the log or
 // selecting new eviction victims. Call it only while recovering before serving.
 func (s *Store) ApplyRecoveredRecord(record persistence.Record) error {
@@ -33,6 +44,7 @@ func (s *Store) ApplyRecoveredRecord(record persistence.Record) error {
 			s.removeElementLocked(element)
 		}
 	}
+	s.publishSizeMetricsLocked()
 	return nil
 }
 

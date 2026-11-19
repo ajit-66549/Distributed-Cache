@@ -80,6 +80,7 @@ guarantees, and limits.
 Phase 8 starts with the [planned observability contract](docs/observability.md)
 and [engine benchmark baseline](benchmarks/results.md). The
 [metrics package](internal/metrics/metrics.go) provides counters, gauges, and
-request-duration histograms. Server GET operations record cache hits and misses.
-Other cache instrumentation, HTTP instrumentation, and metrics/health/readiness
-endpoints remain future work.
+request-duration histograms. Server operations record cache hits, misses,
+evictions, TTL removals, stored key/value bytes, the byte budget, and item count.
+Recovery populates size gauges without replaying runtime removal counters.
+HTTP instrumentation and metrics/health/readiness endpoints remain future work.

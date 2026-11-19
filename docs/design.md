@@ -484,8 +484,10 @@ single-node metrics, counting rules, HTTP timing, and health/readiness semantics
 The [benchmark record](../benchmarks/results.md) preserves the uninstrumented
 engine baseline. The [metrics package](../internal/metrics/metrics.go) implements
 the measurement primitives with independent registries. Server startup attaches
-one metrics instance to the store, and GET records hits and misses. Other cache
-instrumentation, HTTP instrumentation, and the new endpoints remain future work.
+one metrics instance to the store. Cache operations record hits, misses, completed
+evictions, lazy and cleanup expiration removals, stored bytes, the byte budget,
+and physical item count. Recovery publishes size gauges without adding historical
+removal events. HTTP instrumentation and the new endpoints remain future work.
 
 ## 15. Planned Development Order
 
