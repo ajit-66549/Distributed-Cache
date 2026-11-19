@@ -1,8 +1,8 @@
 # Phase 8 measurement contract
 
 Status: Phase 8 Task 1 definitions, Task 3 metrics package, Task 4 GET hit/miss
-instrumentation, and Task 5 removal/size instrumentation are implemented.
-HTTP instrumentation and the new endpoints remain planned.
+instrumentation, Task 5 removal/size instrumentation, and Task 6 HTTP
+instrumentation are implemented. The new endpoints remain planned.
 
 This contract describes the current single-node cache. It preserves HTTP
 responses, TTL behavior, LRU behavior, and the rule that mutations are synced to
@@ -234,7 +234,7 @@ shared by all instances.
 map to `OTHER`; unknown routes map to `unmatched`. Status zero represents an abort
 before a final response, and statuses outside 200 through 599 also map to
 `aborted`. Negative elapsed durations are clamped to zero. The HTTP middleware
-will own actual routing, first-final-status detection, and timing in Task 6;
+uses the router's selected pattern and handles first-final-status detection and timing;
 passing a raw key path never exposes that key as a metric label.
 
 `SetCacheStats` copies values into a snapshot protected by a short metrics lock.
@@ -269,7 +269,7 @@ recovery do not increment lookup counters. Two successful GETs followed by one
 absent-key GET produce two hits and one miss on a fresh instance.
 
 Task 4 connects lookup counters; Task 5 adds removal counters and size gauges as
-described below. HTTP measurements and metrics/probe endpoints remain future work.
+described below. Task 6 connects HTTP measurements; metrics/probe endpoints remain future work.
 The measurements can currently be collected through the supplied instance's
 `Gatherer()`.
 
@@ -306,3 +306,36 @@ one snapshot while the cache lock is held, or while a constructor owns an
 unpublished store. Collection never acquires a cache lock. An invalid snapshot
 indicates an internal accounting problem and is logged without changing the
 result of a durable mutation that has already applied.
+
+## 11. HTTP request instrumentation (Task 6)
+
+[`server.InstrumentHTTP`](../internal/server/metrics.go) wraps the complete router.
+Application startup passes it the same metrics instance attached to the cache.
+Installing it once records one request counter increment and one duration
+observation per eligible request. Passing nil metrics leaves the handler unchanged.
+
+The timer starts before routing and stops after handler completion, including
+JSON decoding and validation, time inside cache calls (lock waits and durable
+persistence included), and response encoding/writing. It excludes connection
+setup and final network delivery after the handler returns.
+
+After routing, the middleware reads `Request.Pattern` and removes its method
+prefix, yielding `/v1/cache/{key}` or `/v1/ping`. Raw keys and query strings are
+never labels. Router-generated 404 and 405 responses use `unmatched`; unsupported
+methods use `OTHER` according to the metrics package's bounded label rules.
+
+A response-writer wrapper captures the first final status and handles implicit
+200 responses. Informational 1xx responses do not replace the final status.
+Deferred collection runs even if a handler panics: a panic before final headers
+records `aborted`, while one after final headers retains their status. The panic
+continues to the caller/HTTP server; middleware does not convert it into a 500.
+
+Request counters distinguish client rejections such as 400/413 from server
+failures such as 500 using the status label. GET 404 remains a normal miss.
+Duration histograms are grouped by method and route as defined in the contract.
+
+Metrics, health/readiness, and pprof paths bypass application instrumentation
+before routing, even when those endpoints are not registered. This task does not
+install those endpoints. Focused tests exercise status labels, route grouping,
+implicit/informational responses, panics, exclusions, and timing across request
+decoding, cache calls, and response writing.

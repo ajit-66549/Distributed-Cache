@@ -42,7 +42,8 @@ func run() (err error) {
 	handler := server.NewHandler(cacheStore)
 
 	address := ":" + cfg.Port
-	httpServer := server.NewHTTPServer(address, handler.Routes())
+	routes := server.InstrumentHTTP(handler.Routes(), measurements)
+	httpServer := server.NewHTTPServer(address, routes)
 
 	shutdownSignal, stop := signal.NotifyContext(
 		context.Background(),

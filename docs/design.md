@@ -487,7 +487,9 @@ the measurement primitives with independent registries. Server startup attaches
 one metrics instance to the store. Cache operations record hits, misses, completed
 evictions, lazy and cleanup expiration removals, stored bytes, the byte budget,
 and physical item count. Recovery publishes size gauges without adding historical
-removal events. HTTP instrumentation and the new endpoints remain future work.
+removal events. HTTP middleware measures requests by method, route pattern, and
+status, and records durations including validation, lock waits, persistence, and
+response encoding. Metrics/health/readiness endpoints remain future work.
 
 ## 15. Planned Development Order
 

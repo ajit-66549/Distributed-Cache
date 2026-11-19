@@ -83,4 +83,6 @@ and [engine benchmark baseline](benchmarks/results.md). The
 request-duration histograms. Server operations record cache hits, misses,
 evictions, TTL removals, stored key/value bytes, the byte budget, and item count.
 Recovery populates size gauges without replaying runtime removal counters.
-HTTP instrumentation and metrics/health/readiness endpoints remain future work.
+HTTP middleware records request counts by method, route pattern, and response
+status, plus duration histograms spanning validation, cache work, and response
+generation. Metrics/health/readiness endpoints remain future work.
