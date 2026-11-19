@@ -12,13 +12,13 @@ import (
 
 // openStore restores the cache before it can receive HTTP requests. The caller
 // owns the returned writer and closes it after draining requests on shutdown.
-func openStore(cfg config.Config) (*cache.Store, *persistence.AOF, error) {
+func openStore(cfg config.Config, options ...cache.Option) (*cache.Store, *persistence.AOF, error) {
 	writer, snapshot, err := persistence.OpenAOFWithSnapshot(cfg.DataDir, cfg.MaxBytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open cache persistence: %w", err)
 	}
 
-	store, err := cache.NewStoreWithLog(cfg.MaxBytes, writer)
+	store, err := cache.NewStoreWithLog(cfg.MaxBytes, writer, options...)
 	if err != nil {
 		return nil, nil, errors.Join(err, writer.Close())
 	}

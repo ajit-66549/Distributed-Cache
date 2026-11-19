@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/ajit-66549/distributed-cache/internal/metrics"
 )
 
 // DefaultMaxBytes is the default budget for key and value bytes (64 MiB).
@@ -24,35 +26,51 @@ type Store struct {
 	maxBytes  int64
 
 	mutationLog MutationLog
+	metrics     *metrics.Metrics
 }
 
-func NewStore() *Store {
-	return &Store{
+// Option configures a store before it is used.
+type Option func(*Store)
+
+// WithMetrics enables lookup counters using the supplied metrics instance.
+// A nil instance leaves instrumentation disabled.
+func WithMetrics(measurements *metrics.Metrics) Option {
+	return func(store *Store) {
+		store.metrics = measurements
+	}
+}
+
+func NewStore(options ...Option) *Store {
+	store := &Store{
 		entries:  make(map[string]*list.Element),
 		lru:      list.New(),
 		maxBytes: DefaultMaxBytes,
 	}
+	for _, option := range options {
+		option(store)
+	}
+	return store
 }
 
 // NewStoreWithLimit creates a store with a positive byte budget.
-func NewStoreWithLimit(maxBytes int64) (*Store, error) {
+func NewStoreWithLimit(maxBytes int64, options ...Option) (*Store, error) {
 	if maxBytes <= 0 {
 		return nil, errors.New("maximum cache size must be greater than zero")
 	}
 
-	store := NewStore()
+	store := NewStore(options...)
 	store.maxBytes = maxBytes
 	return store, nil
 }
 
 // NewStoreWithLog creates a store with a supplied mutation log.
 // The caller owns opening and closing the log.
-func NewStoreWithLog(maxBytes int64, mutationLog MutationLog) (*Store, error) {
+func NewStoreWithLog(maxBytes int64, mutationLog MutationLog, options ...Option) (*Store, error) {
 	if mutationLog == nil {
 		return nil, errors.New("mutation log is required")
 	}
 
-	store, err := NewStoreWithLimit(maxBytes)
+	store, err := NewStoreWithLimit(maxBytes, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +161,9 @@ func (s *Store) Get(key string) (string, bool) {
 
 	element, found := s.entries[key]
 	if !found {
+		if s.metrics != nil {
+			s.metrics.RecordMiss()
+		}
 		return "", false
 	}
 
@@ -150,11 +171,17 @@ func (s *Store) Get(key string) (string, bool) {
 
 	if item.Entry.IsExpired(time.Now()) {
 		s.removeElementLocked(element)
+		if s.metrics != nil {
+			s.metrics.RecordMiss()
+		}
 		return "", false
 	}
 
 	// A successfully retrieved entry becomes most recently used.
 	s.lru.MoveToFront(element)
+	if s.metrics != nil {
+		s.metrics.RecordHit()
+	}
 
 	return item.Entry.Value, true
 }

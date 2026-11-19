@@ -1,7 +1,8 @@
 # Phase 8 measurement contract
 
-Status: Phase 8 Task 1 definitions and Task 3 metrics package are implemented.
-Cache/HTTP instrumentation and the new endpoints remain planned.
+Status: Phase 8 Task 1 definitions, Task 3 metrics package, and Task 4 GET hit/miss
+instrumentation are implemented. Removal/size instrumentation, HTTP
+instrumentation, and the new endpoints remain planned.
 
 This contract describes the current single-node cache. It preserves HTTP
 responses, TTL behavior, LRU behavior, and the rule that mutations are synced to
@@ -246,3 +247,28 @@ are not part of Task 3.
 Package tests cover counter totals, metric definitions, histogram boundaries and
 overflow, bounded labels, probe exclusions, rejected snapshots, independent
 instances, and concurrent updates with consistent gauge collection.
+
+## 9. GET hit and miss instrumentation (Task 4)
+
+`cache.WithMetrics(measurements)` attaches an existing metrics instance when
+constructing a store. `NewStore`, `NewStoreWithLimit`, and `NewStoreWithLog` accept
+this optional setting; callers that omit it have lookup instrumentation disabled.
+The server creates one instance at startup and passes it through recovery to the
+store before serving requests. Snapshot restoration and AOF replay do not call
+GET and therefore do not add lookup events.
+
+With metrics attached, each `Store.Get` increments exactly one lookup counter:
+
+* A present, unexpired entry increments hits, including an empty value.
+* An absent key increments misses.
+* An expired entry is removed and increments misses. Another GET of that key
+  increments misses again because the entry is now absent.
+
+These updates happen under the existing cache lock. SET, DELETE, cleanup, and
+recovery do not increment lookup counters. Two successful GETs followed by one
+absent-key GET produce two hits and one miss on a fresh instance.
+
+Only lookup counters are connected in Task 4. Lazy-expiration removal counts,
+other removal counts, size gauges, HTTP measurements, and metrics/probe endpoints
+remain for the following tasks. The counters can currently be collected through
+the supplied instance's `Gatherer()`.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ajit-66549/distributed-cache/internal/cache"
 	"github.com/ajit-66549/distributed-cache/internal/config"
+	"github.com/ajit-66549/distributed-cache/internal/metrics"
 	"github.com/ajit-66549/distributed-cache/internal/server"
 )
 
@@ -30,7 +31,8 @@ func run() (err error) {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	cacheStore, writer, err := openStore(cfg)
+	measurements := metrics.New()
+	cacheStore, writer, err := openStore(cfg, cache.WithMetrics(measurements))
 	if err != nil {
 		return err
 	}
