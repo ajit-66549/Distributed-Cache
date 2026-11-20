@@ -107,3 +107,40 @@ starts, so probes cannot connect during recovery; shutdown closes the listener
 after readiness has been withdrawn. Readiness does not change cache API responses,
 and reads can still work while persistence is failed. Normal misses, input
 rejections, and a full cache do not make the server unready.
+
+## View cache metrics in Prometheus
+
+1. Install Prometheus once with `brew install prometheus` on macOS. On other
+   platforms, get the [Prometheus binary](https://prometheus.io/download/) and
+   put it on your `PATH`.
+2. From the repository directory, run `make run` and leave it running. The cache
+   exposes raw metrics at [http://localhost:8080/metrics](http://localhost:8080/metrics).
+3. In a second terminal in the same directory, run `make prometheus`.
+   [prometheus.yml](prometheus.yml) tells Prometheus to scrape the cache every
+   five seconds. Prometheus stores its time series in `prometheus-data/`.
+4. Open [http://localhost:9090](http://localhost:9090). On the
+   [Targets page](http://localhost:9090/targets), look for the `cache` job and
+   wait for it to show **UP**. In [Query](http://localhost:9090/query), enter
+   `up{job="cache"}` and click **Execute**. A value of `1` means the last scrape
+   succeeded. Use **Table** for the latest value or **Graph** for the history.
+
+To generate a hit and a miss, run these in another terminal. The sample entry
+has a 60-second TTL, and the missing-key request is expected to return `404`.
+
+```sh
+curl -i -X PUT http://localhost:8080/v1/cache/prometheus-demo \
+  -H 'Content-Type: application/json' \
+  -d '{"value":"sample","ttl_seconds":60}'
+curl -i http://localhost:8080/v1/cache/prometheus-demo
+curl -i http://localhost:8080/v1/cache/prometheus-demo-missing
+```
+
+After the next scrape, try `cache_hits_total` and `cache_misses_total` for lookup
+counts, `cache_items` for the number of stored entries, or `cache_used_bytes` for
+stored key and value bytes. `cache_http_requests_total` appears after the first
+application request and groups counts by method, route, and status.
+
+If the target shows **DOWN**, check that `curl -f http://localhost:8080/metrics`
+returns metrics. If you set `CACHE_PORT`, update the target port in
+`prometheus.yml` and restart Prometheus. Stop either process with `Ctrl+C` in
+its terminal.

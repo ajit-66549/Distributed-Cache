@@ -12,6 +12,9 @@ coverage.out
 # Cache persistence data
 data/
 
+# Local Prometheus time series
+prometheus-data/
+
 # macOS
 .DS_Store
 
