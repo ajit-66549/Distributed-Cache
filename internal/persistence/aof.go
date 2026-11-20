@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -20,6 +22,7 @@ const (
 // serialized. Cache mutation ordering must also be coordinated by the caller.
 // Open with OpenAOF or OpenAOFWithSnapshot; do not copy an AOF after first use.
 type AOF struct {
+	writable     atomic.Bool
 	mu           sync.Mutex
 	file         *os.File
 	lock         *os.File
@@ -140,13 +143,22 @@ func openAOF(dataDir string, maxBytes int64, loadSnapshot bool) (aof *AOF, snaps
 		return nil, nil, err
 	}
 
-	return &AOF{
+	aof = &AOF{
 		file:         file,
 		lock:         lock,
 		path:         path,
 		header:       header,
 		lastSequence: lastSequence,
-	}, snapshot, nil
+	}
+	aof.writable.Store(lastSequence < math.MaxUint64)
+	return aof, snapshot, nil
+}
+
+// Writable reports whether this opened writer can accept another mutation.
+// It performs no I/O and never waits for the AOF mutex. Terminal failures, close,
+// and sequence exhaustion remain unwritable until a new writer is opened.
+func (aof *AOF) Writable() bool {
+	return aof.writable.Load()
 }
 
 // Header returns the current log metadata, including the base after rotation.
@@ -187,6 +199,9 @@ func (aof *AOF) Append(record Record) error {
 		return aof.fail(fmt.Errorf("sync AOF %q at sequence %d: %w", aof.path, record.Sequence, err))
 	}
 	aof.lastSequence = record.Sequence
+	if record.Sequence == math.MaxUint64 {
+		aof.writable.Store(false)
+	}
 	return nil
 }
 
@@ -208,6 +223,7 @@ func (aof *AOF) Sync() error {
 // attempts every cleanup step even after a failure and preserves all errors.
 // Repeated calls return the same result. Close does not clear a prior failure.
 func (aof *AOF) Close() error {
+	aof.writable.Store(false)
 	aof.mu.Lock()
 	defer aof.mu.Unlock()
 	if aof.closed {
@@ -241,6 +257,7 @@ func (aof *AOF) stateError() error {
 }
 
 func (aof *AOF) fail(err error) error {
+	aof.writable.Store(false)
 	aof.failure = fmt.Errorf("%w: %w", ErrAOFFailed, err)
 	return aof.failure
 }

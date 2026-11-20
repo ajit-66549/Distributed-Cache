@@ -489,7 +489,9 @@ evictions, lazy and cleanup expiration removals, stored bytes, the byte budget,
 and physical item count. Recovery publishes size gauges without adding historical
 removal events. HTTP middleware measures requests by method, route pattern, and
 status, and records durations including validation, lock waits, persistence, and
-response encoding. Metrics/health/readiness endpoints remain future work.
+response encoding. `/metrics` exports the shared registry. `/healthz` reports
+liveness, and `/readyz` combines completed startup, persistence writability, and
+shutdown state. Probes use published state without cache/AOF locking or disk I/O.
 
 ## 15. Planned Development Order
 

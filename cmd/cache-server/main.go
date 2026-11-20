@@ -39,18 +39,20 @@ func run() (err error) {
 	defer func() {
 		err = errors.Join(err, writer.Close())
 	}()
-	handler := server.NewHandler(cacheStore)
-
-	address := ":" + cfg.Port
-	routes := server.InstrumentHTTP(handler.Routes(), measurements)
-	httpServer := server.NewHTTPServer(address, routes)
-
 	shutdownSignal, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
 		syscall.SIGTERM,
 	)
 	defer stop()
+	readiness := server.NewReadiness(shutdownSignal, writer.Writable)
+	defer readiness.BeginShutdown()
+	handler := server.NewHandler(cacheStore, server.WithMonitoring(measurements.Gatherer(), readiness))
+
+	address := ":" + cfg.Port
+	routes := server.InstrumentHTTP(handler.Routes(), measurements)
+	httpServer := server.NewHTTPServer(address, routes)
+
 	workerContext, cancelWorkers := context.WithCancel(shutdownSignal)
 	defer cancelWorkers()
 	snapshotDone, err := cache.StartSnapshotScheduler(
@@ -74,17 +76,18 @@ func run() (err error) {
 	}()
 	log.Printf("periodic snapshots scheduled every %s", cfg.SnapshotInterval)
 
-	serverErrors := make(chan error, 1)
-	go func() {
-		log.Printf("distributed cache server listening on %s", address)
-		serverErrors <- httpServer.ListenAndServe()
-	}()
-
 	cache.StartExpirationCleanup(
 		workerContext,
 		cacheStore,
 		time.Minute,
 	)
+	readiness.MarkReady()
+
+	serverErrors := make(chan error, 1)
+	go func() {
+		log.Printf("distributed cache server listening on %s", address)
+		serverErrors <- httpServer.ListenAndServe()
+	}()
 
 	var shutdownErr error
 	select {
@@ -100,6 +103,7 @@ func run() (err error) {
 			shutdownErr = fmt.Errorf("snapshot scheduler failed: %w", snapshotErr)
 		}
 	}
+	readiness.BeginShutdown()
 	cancelWorkers()
 
 	shutdownContext, cancel := context.WithTimeout(

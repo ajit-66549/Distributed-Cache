@@ -303,7 +303,31 @@ Periodic snapshots run at `CACHE_SNAPSHOT_INTERVAL`, defaulting to `1m`. Snapsho
 | `DELETE missing-key` | `404 Not Found` | `{"error":"key not found"}` |
 | `PING` | `200 OK` | `{"status":"ok"}` |
 
-## 11. Future Protocol Features
+## 11. Monitoring Endpoints
+
+| Request | Response |
+| --- | --- |
+| `GET /healthz` | `200 OK`, `{"status":"ok"}`. |
+| `GET /readyz` | `200 OK`, `{"status":"ready"}`, or `503 Service Unavailable`, `{"status":"not_ready"}`. |
+| `GET /metrics` | `200 OK` with Prometheus-compatible measurements; collection errors return `500 Internal Server Error`. |
+
+Health is a liveness check and does not inspect entries or write to storage.
+Readiness requires completed recovery and worker initialization, writable
+persistence, and no shutdown request. Observed persistence I/O failure or sequence
+exhaustion withdraws readiness; successful reads do not restore it. Routine
+snapshots, a full cache, normal misses, and input/capacity rejections keep readiness.
+
+Recovery completes before the HTTP listener starts, so monitoring endpoints are
+unreachable during recovery. During shutdown, readiness is withdrawn before HTTP
+draining; after the listener closes there is no HTTP response. Snapshot-worker
+failure initiates the same shutdown path. Probe handlers do not acquire cache or
+AOF locks, and readiness is advisory rather than a new gate on cache operations.
+
+The metrics exporter uses the application's own registry. Metrics and health
+requests do not increment application request counts or duration histograms.
+These endpoints do not trigger cache lookups, expiration cleanup, or snapshots.
+
+## 12. Future Protocol Features
 
 Later versions may add:
 

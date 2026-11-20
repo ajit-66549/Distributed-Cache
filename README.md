@@ -31,6 +31,9 @@ The HTTP endpoints are:
 | Request | Result |
 | --- | --- |
 | `GET /v1/ping` | `200`, `{"status":"ok"}`. |
+| `GET /healthz` | `200`, `{"status":"ok"}` while HTTP can respond. |
+| `GET /readyz` | `200`, `{"status":"ready"}`, or `503`, `{"status":"not_ready"}`. |
+| `GET /metrics` | `200` with Prometheus metrics; `500` if collection fails. |
 | `PUT /v1/cache/{key}` | `201`, `{"status":"stored"}`. |
 | `GET /v1/cache/{key}` | `200` with the value, or `404` with `{"value":null}`. |
 | `DELETE /v1/cache/{key}` | `200`, `{"status":"deleted"}`, or `404` if missing. |
@@ -85,4 +88,22 @@ evictions, TTL removals, stored key/value bytes, the byte budget, and item count
 Recovery populates size gauges without replaying runtime removal counters.
 HTTP middleware records request counts by method, route pattern, and response
 status, plus duration histograms spanning validation, cache work, and response
-generation. Metrics/health/readiness endpoints remain future work.
+generation. `/metrics` exposes the shared registry; scrapes and probes are
+excluded from application request metrics.
+
+Check a running server:
+
+```sh
+curl -i http://localhost:8080/healthz
+curl -i http://localhost:8080/readyz
+curl http://localhost:8080/metrics
+```
+
+Readiness becomes true after recovery and worker initialization. It becomes false
+when persistence can no longer accept durable writes, on snapshot-worker failure,
+or when shutdown starts. Health stays a lightweight liveness response. Both probes
+avoid cache/persistence locks and disk I/O. Recovery runs before the listener
+starts, so probes cannot connect during recovery; shutdown closes the listener
+after readiness has been withdrawn. Readiness does not change cache API responses,
+and reads can still work while persistence is failed. Normal misses, input
+rejections, and a full cache do not make the server unready.

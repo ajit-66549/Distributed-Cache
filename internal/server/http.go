@@ -20,13 +20,18 @@ type Cache interface {
 }
 
 type Handler struct {
-	cache Cache
+	cache      Cache
+	monitoring *monitoringEndpoints
 }
 
-func NewHandler(cache Cache) *Handler {
-	return &Handler{
+func NewHandler(cache Cache, options ...Option) *Handler {
+	handler := &Handler{
 		cache: cache,
 	}
+	for _, option := range options {
+		option(handler)
+	}
+	return handler
 }
 
 type pingResponse struct {
@@ -48,6 +53,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("PUT /v1/cache/{key}", h.Set)
 	mux.HandleFunc("GET /v1/cache/{key}", h.Get)
 	mux.HandleFunc("DELETE /v1/cache/{key}", h.Delete)
+	if h.monitoring != nil {
+		h.monitoring.register(mux)
+	}
 
 	return mux
 }

@@ -2,7 +2,7 @@
 
 Status: Phase 8 Task 1 definitions, Task 3 metrics package, Task 4 GET hit/miss
 instrumentation, Task 5 removal/size instrumentation, and Task 6 HTTP
-instrumentation are implemented. The new endpoints remain planned.
+instrumentation are implemented. Task 7 exposes metrics, health, and readiness.
 
 This contract describes the current single-node cache. It preserves HTTP
 responses, TTL behavior, LRU behavior, and the rule that mutations are synced to
@@ -158,20 +158,21 @@ examining read and durable-write latency.
 
 ## 6. Health and readiness
 
-The planned endpoints use GET and return a small JSON response:
+The implemented probe endpoints use GET and return a small JSON response.
+The metrics endpoint serves Prometheus-compatible measurements:
 
 | Endpoint | Successful response | Unready response |
 | --- | --- | --- |
 | `/healthz` | `200`, `{"status":"ok"}` while the HTTP service can respond. | An unavailable or stopped listener cannot respond. |
 | `/readyz` | `200`, `{"status":"ready"}` when normal durable operations are available. | `503`, `{"status":"not_ready"}` if reachable while unready. |
-| `/metrics` | `200` with exported measurements. | Exporter behavior will be specified when the exporter is implemented. |
+| `/metrics` | `200` with exported measurements from the application's registry. | Collection failure returns `500`; unready state alone does not prevent scraping. |
 
 Readiness is true only after configuration, persistence validation, recovery,
 and worker initialization succeed, and before shutdown begins. It becomes false
 on a terminal persistence condition that disables durable writes (including I/O
 failure or sequence exhaustion), snapshot-worker failure, or shutdown initiation.
-A terminal persistence condition remains unready until
-restart and successful recovery; a successful GET does not restore readiness.
+I/O failure requires restart and successful recovery; a successful GET does not
+restore readiness. Exhausted sequence history remains unwritable when reopened.
 
 Startup currently binds the HTTP listener after recovery, so probes cannot
 connect during recovery. Do not describe that period as an actual HTTP 503 or
@@ -269,9 +270,9 @@ recovery do not increment lookup counters. Two successful GETs followed by one
 absent-key GET produce two hits and one miss on a fresh instance.
 
 Task 4 connects lookup counters; Task 5 adds removal counters and size gauges as
-described below. Task 6 connects HTTP measurements; metrics/probe endpoints remain future work.
-The measurements can currently be collected through the supplied instance's
-`Gatherer()`.
+described below. Task 6 connects HTTP measurements; Task 7 exposes the monitoring
+endpoints. Measurements can be collected through the supplied instance's
+`Gatherer()` or `/metrics`.
 
 ## 10. Removal and size instrumentation (Task 5)
 
@@ -339,3 +340,33 @@ before routing, even when those endpoints are not registered. This task does not
 install those endpoints. Focused tests exercise status labels, route grouping,
 implicit/informational responses, panics, exclusions, and timing across request
 decoding, cache calls, and response writing.
+
+## 12. Monitoring routes and lifecycle readiness (Task 7)
+
+`server.WithMonitoring(gatherer, readiness)` configures `NewHandler` to register
+the three monitoring endpoints on the same router as the cache API. `/metrics`
+uses Prometheus's `promhttp.HandlerFor` with the supplied private registry and
+returns HTTP 500 on collection failure. It remains available while unready.
+The existing middleware excludes all three routes from application observations.
+
+`server.Readiness` starts unready. Startup calls `MarkReady()` after `openStore`
+has completed recovery and both workers have been started, before the listener
+begins accepting requests. `Ready()` checks atomic lifecycle flags, the shutdown
+context, and the persistence owner's nonblocking `Writable()` callback. Missing
+readiness configuration is unready. `BeginShutdown()` permanently withdraws
+readiness, and signal-context cancellation withdraws it even before the main
+shutdown select loop runs. Snapshot-worker and listener results lead through the
+same shutdown path before HTTP draining and persistence close.
+
+The AOF publishes writability using an atomic boolean. It is false before open,
+after close begins, after a terminal append/sync/snapshot publication or rotation
+failure, and when the last sequence reaches its maximum. Validation rejections
+and routine successful snapshots do not disable it. The flag describes observed
+writer state; probes do not issue test writes or wait for the AOF mutex.
+
+Readiness is advisory. Existing GET/PUT/DELETE responses retain their contract,
+and successful reads after a persistence failure do not make readiness true.
+Health simply returns a liveness response without consulting persistence.
+Tests cover metric exposition and probe exclusions, startup/shutdown state,
+collection failure, actual I/O failures, sequence exhaustion, nonblocking checks,
+and readiness after snapshot/AOF recovery and a later rotation failure.
