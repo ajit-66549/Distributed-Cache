@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -213,5 +214,59 @@ func TestHTTPMetricsTimesValidationCacheAndResponse(t *testing.T) {
 	histogram := assertHTTPMetrics(t, m, "PUT", "/v1/cache/{key}", "201", 1)
 	if histogram.GetSampleSum() < (15 * time.Millisecond).Seconds() {
 		t.Errorf("duration %g seconds excluded request decoding, cache work, or response writing", histogram.GetSampleSum())
+	}
+}
+
+func TestHTTPMetricsConcurrentRequestsAndScrapes(t *testing.T) {
+	const workers, iterations = 8, 32
+	const total = workers * iterations
+	measurements := metrics.New()
+	store := cache.NewStore(cache.WithMetrics(measurements))
+	if err := store.Set("name", "Ajit"); err != nil {
+		t.Fatal(err)
+	}
+	handler := InstrumentHTTP(NewHandler(store, WithMonitoring(measurements.Gatherer(), nil)).Routes(), measurements)
+	start, scraped := make(chan struct{}), make(chan struct{})
+	var requests sync.WaitGroup
+	for worker := range workers {
+		requests.Go(func() {
+			<-start
+			for range iterations {
+				response := httptest.NewRecorder()
+				path := "/v1/cache/name?reader=" + strconv.Itoa(worker)
+				handler.ServeHTTP(response, httptest.NewRequest("GET", path, nil))
+				if response.Code != http.StatusOK || response.Body.String() != "{\"value\":\"Ajit\"}\n" {
+					t.Errorf("concurrent GET status=%d body=%q", response.Code, response.Body.String())
+					return
+				}
+			}
+		})
+	}
+	go func() {
+		defer close(scraped)
+		<-start
+		for range 20 {
+			response := monitoringRequest(handler, "/metrics")
+			if response.Code != http.StatusOK {
+				t.Errorf("concurrent scrape status=%d body=%q", response.Code, response.Body.String())
+				return
+			}
+		}
+	}()
+	close(start)
+	requests.Wait()
+	<-scraped
+	histogram := assertHTTPMetrics(t, measurements, "GET", "/v1/cache/{key}", "200", total)
+	if histogram.GetSampleSum() <= 0 {
+		t.Error("concurrent HTTP durations were not recorded")
+	}
+	response := monitoringRequest(handler, "/metrics")
+	for _, sample := range []string{
+		"cache_hits_total " + strconv.Itoa(total) + "\n",
+		"cache_misses_total 0\n", "cache_used_bytes 8\n", "cache_items 1\n",
+	} {
+		if !strings.Contains(response.Body.String(), sample) {
+			t.Errorf("final metrics missing %q", sample)
+		}
 	}
 }

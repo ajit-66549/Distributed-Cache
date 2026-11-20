@@ -1,8 +1,8 @@
 # Phase 8 measurement contract
 
-Status: Phase 8 Task 1 definitions, Task 3 metrics package, Task 4 GET hit/miss
-instrumentation, Task 5 removal/size instrumentation, and Task 6 HTTP
-instrumentation are implemented. Task 7 exposes metrics, health, and readiness.
+Status: Measurement definitions, the metrics package, cache and HTTP
+instrumentation, and monitoring endpoints are implemented. Controlled scenarios
+and concurrency checks verify metric updates and collection.
 
 This contract describes the current single-node cache. It preserves HTTP
 responses, TTL behavior, LRU behavior, and the rule that mutations are synced to
@@ -33,7 +33,7 @@ avoid introducing a metrics lock that reverses that order.
 
 Names and units below are the contract for later instrumentation. The metrics
 package uses the Prometheus Go client with a private registry per instance.
-HTTP exporter wiring belongs to a later task.
+The server package connects collection to the HTTP exporter.
 
 | Metric | Type | Labels | Definition |
 | --- | --- | --- | --- |
@@ -186,7 +186,7 @@ must not perform disk writes, acquire the cache/AOF locks, or wait for snapshot
 completion; use lifecycle/persistence state published by the relevant owner.
 Readiness is advisory and does not change existing cache endpoint responses.
 
-## 7. Verification examples for later instrumentation
+## 7. Verification scenarios
 
 Run each scenario from a known starting state and compare metric deltas, not
 unrelated process totals. Prevent unrelated cleanup and snapshot activity during
@@ -206,10 +206,11 @@ deterministic assertions.
 | Scrape metrics and probe health/readiness | No application request, lookup, removal, or LRU changes. |
 | Save a snapshot while requests wait | Successful snapshot keeps readiness true; waiting request durations include the pause. |
 
-Run race checks once instrumentation exists. Keep the uninstrumented engine
-baseline and its limitations in [the benchmark record](../benchmarks/results.md).
+Controlled cache and concurrency checks are described in the controlled metric
+scenarios section below. Keep the uninstrumented engine baseline and its
+limitations in [the benchmark record](../benchmarks/results.md).
 
-## 8. Metrics package (Task 3)
+## 8. Metrics package
 
 [`internal/metrics`](../internal/metrics/metrics.go) provides the measurements
 without importing the cache or server packages. `New()` creates an independent
@@ -243,13 +244,13 @@ The cache integration captures and publishes the snapshot while holding the
 cache lock, preserving mutation order. Collection copies the entire snapshot
 and releases the metrics lock before emitting measurements; it never calls back
 into the cache. Cache/HTTP integration, lifecycle readiness, and route installation
-are not part of Task 3.
+live outside the metrics package.
 
 Package tests cover counter totals, metric definitions, histogram boundaries and
 overflow, bounded labels, probe exclusions, rejected snapshots, independent
 instances, and concurrent updates with consistent gauge collection.
 
-## 9. GET hit and miss instrumentation (Task 4)
+## 9. GET hit and miss instrumentation
 
 `cache.WithMetrics(measurements)` attaches an existing metrics instance when
 constructing a store. `NewStore`, `NewStoreWithLimit`, and `NewStoreWithLog` accept
@@ -269,12 +270,10 @@ These updates happen under the existing cache lock. SET, DELETE, cleanup, and
 recovery do not increment lookup counters. Two successful GETs followed by one
 absent-key GET produce two hits and one miss on a fresh instance.
 
-Task 4 connects lookup counters; Task 5 adds removal counters and size gauges as
-described below. Task 6 connects HTTP measurements; Task 7 exposes the monitoring
-endpoints. Measurements can be collected through the supplied instance's
+Measurements can be collected through the supplied instance's
 `Gatherer()` or `/metrics`.
 
-## 10. Removal and size instrumentation (Task 5)
+## 10. Removal and size instrumentation
 
 Stores with metrics attached publish the configured byte budget, zero used
 bytes, and zero items during construction. Size updates use the existing byte
@@ -308,7 +307,7 @@ unpublished store. Collection never acquires a cache lock. An invalid snapshot
 indicates an internal accounting problem and is logged without changing the
 result of a durable mutation that has already applied.
 
-## 11. HTTP request instrumentation (Task 6)
+## 11. HTTP request instrumentation
 
 [`server.InstrumentHTTP`](../internal/server/metrics.go) wraps the complete router.
 Application startup passes it the same metrics instance attached to the cache.
@@ -336,12 +335,12 @@ failures such as 500 using the status label. GET 404 remains a normal miss.
 Duration histograms are grouped by method and route as defined in the contract.
 
 Metrics, health/readiness, and pprof paths bypass application instrumentation
-before routing, even when those endpoints are not registered. This task does not
-install those endpoints. Focused tests exercise status labels, route grouping,
-implicit/informational responses, panics, exclusions, and timing across request
-decoding, cache calls, and response writing.
+before routing, even when those endpoints are not registered. Route installation
+is handled separately from instrumentation. Focused tests exercise status
+labels, route grouping, implicit/informational responses, panics, exclusions,
+and timing across request decoding, cache calls, and response writing.
 
-## 12. Monitoring routes and lifecycle readiness (Task 7)
+## 12. Monitoring routes and lifecycle readiness
 
 `server.WithMonitoring(gatherer, readiness)` configures `NewHandler` to register
 the three monitoring endpoints on the same router as the cache API. `/metrics`
@@ -370,3 +369,43 @@ Health simply returns a liveness response without consulting persistence.
 Tests cover metric exposition and probe exclusions, startup/shutdown state,
 collection failure, actual I/O failures, sequence exhaustion, nonblocking checks,
 and readiness after snapshot/AOF recovery and a later rotation failure.
+
+## 13. Controlled metric scenarios
+
+[`internal/cache/metrics_test.go`](../internal/cache/metrics_test.go) exercises
+real cache operations with a fresh metrics instance per scenario. It gathers
+exported counters and gauges, verifies their presence, and compares exact values
+for hits, misses, evictions, both expiration sources, used/max bytes, and items.
+Process heap usage is excluded from exact comparisons because allocation and GC
+make it nondeterministic.
+
+The twelve isolated scenarios cover successful reads, missing reads, empty
+values, expired-but-still-stored entries, repeated reads after expiration,
+multiple evictions, expired LRU victims, replacements, explicit deletes of
+expired entries, repeated cleanup passes, oversized replacements, and failed
+durable mutations. Expiration fixtures use already-passed deadlines rather than
+sleeping for TTLs. The existing test log injects append failures; prior completed
+evictions remain counted while failed insert/replacement plans and failed deletes
+leave membership, bytes, item count, and completed log history unchanged.
+
+The cache concurrency test runs eight workers for 64 iterations each while
+cleanup and collection run concurrently. It checks coherent size snapshots and
+final totals of 512 hits, 512 misses, and 512 expiration removals. Whether GET or
+cleanup wins an expiration race may vary; the combined removal total must be
+exact, and deterministic scenarios separately verify the two sources.
+
+[`internal/server/metrics_test.go`](../internal/server/metrics_test.go) additionally
+runs eight workers making 32 real handler requests each alongside 20 metric
+scrapes. It verifies 256 HTTP counter increments, 256 duration observations,
+256 engine hits, shared route-pattern labels, correct size, and exclusion of
+scrapes from application traffic. Existing status tests cover client rejections
+and simulated server failures; monitoring integration tests cover recovery and
+actual terminal persistence failures.
+
+Run the focused checks or the complete race suite from the repository directory:
+
+```sh
+go test -race -count=1 -run '^TestCacheMetric' -v ./internal/cache
+go test -race -count=1 -run '^TestHTTPMetricsConcurrentRequestsAndScrapes$' -v ./internal/server
+go test -race ./...
+```

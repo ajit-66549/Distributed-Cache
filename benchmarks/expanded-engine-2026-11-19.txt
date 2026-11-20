@@ -1,0 +1,186 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/ajit-66549/distributed-cache/internal/cache
+cpu: Apple M3
+BenchmarkGetMissMemory/entries=16           	35654450	         9.958 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=16           	36255447	         9.981 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=16           	36909672	        10.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=16-4         	36235381	        11.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=16-4         	35817331	         9.949 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=16-4         	36160008	         9.946 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=1024         	35262571	        11.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=1024         	29964416	        10.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=1024         	35464048	        12.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=1024-4       	35519306	        10.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=1024-4       	35312001	        10.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=1024-4       	33401629	        10.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=65536        	30260472	        15.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=65536        	35364183	        10.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=65536        	30823237	        10.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=65536-4      	34260697	        10.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=65536-4      	34794516	         9.964 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGetMissMemory/entries=65536-4      	35011365	        10.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/hit/batch=1024        	 5567032	        65.77 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=1024        	 5472496	        65.67 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=1024        	 5415274	        70.90 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=1024-4      	 6961513	        53.20 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=1024-4      	 5627688	        57.11 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=1024-4      	 6805312	        57.46 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=65536       	 3577689	       110.1 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=65536       	 3814098	       142.5 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=65536       	 3532360	       100.6 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=65536-4     	 4411992	        69.17 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=65536-4     	 5085978	        68.93 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/hit/batch=65536-4     	 4886150	        70.87 ns/op	      64 B/op	       1 allocs/op
+BenchmarkDeleteMemory/miss/entries=16       	35370117	        10.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=16       	35260989	        10.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=16       	34831826	        10.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=16-4     	34746381	        10.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=16-4     	35699527	        10.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=16-4     	34352649	        10.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=1024     	34522164	        12.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=1024     	34442482	        10.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=1024     	34399970	        10.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=1024-4   	33713650	        10.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=1024-4   	34099656	        10.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=1024-4   	34345546	        10.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=65536    	34439049	        10.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=65536    	34564839	        12.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=65536    	34481932	        11.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=65536-4  	30855380	        10.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=65536-4  	34604154	        10.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDeleteMemory/miss/entries=65536-4  	34063219	        10.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=0pct           	   49761	      7310 ns/op	         0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=0pct           	   49580	      7358 ns/op	         0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=0pct           	   49990	      7417 ns/op	         0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=0pct-4         	   49178	      7388 ns/op	         0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=0pct-4         	   49201	      7665 ns/op	         0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=0pct-4         	   45732	      7829 ns/op	         0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=50pct          	   10000	     37018 ns/op	       512.0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=50pct          	    9516	     39932 ns/op	       512.0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=50pct          	   10000	     36899 ns/op	       512.0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=50pct-4        	   15051	     26553 ns/op	       512.0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=50pct-4        	   14046	     25184 ns/op	       512.0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=50pct-4        	   14175	     24032 ns/op	       512.0 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=100pct         	    7656	     52659 ns/op	      1024 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=100pct         	    7488	     52431 ns/op	      1024 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=100pct         	    7177	     53584 ns/op	      1024 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=100pct-4       	    9759	     39565 ns/op	      1024 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=100pct-4       	   10000	     36915 ns/op	      1024 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=1024/expired=100pct-4       	   10000	     35385 ns/op	      1024 removed/op	      1024 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=0pct          	     596	    663664 ns/op	         0 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=0pct          	     654	    699873 ns/op	         0 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=0pct          	     542	    768328 ns/op	         0 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=0pct-4        	     610	    564924 ns/op	         0 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=0pct-4        	     626	    564773 ns/op	         0 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=0pct-4        	     604	    799695 ns/op	         0 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=50pct         	      90	   4728607 ns/op	     32768 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=50pct         	      88	   5347341 ns/op	     32768 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=50pct         	     100	   5907725 ns/op	     32768 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=50pct-4       	     116	   4033652 ns/op	     32768 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=50pct-4       	      74	   4851217 ns/op	     32768 removed/op	     65536 scanned/op	       3 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=50pct-4       	     100	   3033735 ns/op	     32768 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=100pct        	     100	   6182130 ns/op	     65536 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=100pct        	      93	   5994744 ns/op	     65536 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=100pct        	      88	   5398879 ns/op	     65536 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=100pct-4      	     100	   4467118 ns/op	     65536 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=100pct-4      	     100	   3357618 ns/op	     65536 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkTTLCleanupMemory/entries=65536/expired=100pct-4      	      80	   5727594 ns/op	     65536 removed/op	     65536 scanned/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=1024                  	 7992694	        48.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=1024                  	 7863459	        43.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=1024                  	 8501911	        43.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=1024-4                	 2017944	       177.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=1024-4                	 1993818	       188.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=1024-4                	 1989009	       181.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=65536                 	 6193530	        57.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=65536                 	 7086864	        49.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=65536                 	 7378850	        56.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=65536-4               	 1647213	       200.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=65536-4               	 1980183	       180.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-hit/entries=65536-4               	 1964977	       182.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=1024                 	34743584	        10.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=1024                 	34169780	        10.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=1024                 	34609560	        10.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=1024-4               	 4292815	        77.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=1024-4               	 4561616	        77.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=1024-4               	 4647522	        77.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=65536                	33061897	        10.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=65536                	33018434	        12.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=65536                	33937182	        10.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=65536-4              	 4525458	        76.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=65536-4              	 4403864	        79.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/get-miss/entries=65536-4              	 4499406	        79.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=1024               	10525353	        35.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=1024               	10834344	        35.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=1024               	10862882	        32.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=1024-4             	 2271807	       145.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=1024-4             	 2471359	       144.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=1024-4             	 2502938	       139.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=65536              	 8813862	        40.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=65536              	 8847952	        39.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=65536              	 8863447	        38.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=65536-4            	 2520153	       141.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=65536-4            	 2487733	       141.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/set-update/entries=65536-4            	 2496459	       143.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=1024        	 8168589	        43.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=1024        	 8256138	        43.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=1024        	 8236846	        44.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=1024-4      	 2121116	       169.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=1024-4      	 1970379	       177.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=1024-4      	 2064484	       178.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=65536       	 7083435	        51.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=65536       	 7119144	        51.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=65536       	 7123387	        50.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=65536-4     	 2126302	       169.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=65536-4     	 2117880	       172.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParallelMemory/mixed-90get-10set/entries=65536-4     	 2101047	       169.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-update/capacity=16            	12075690	        29.20 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-update/capacity=16            	13083692	        28.11 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-update/capacity=16            	12901915	        29.33 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-update/capacity=16-4          	12644426	        27.99 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-update/capacity=16-4          	12726393	        28.03 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-update/capacity=16-4          	12868536	        29.92 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/set-evict/capacity=16             	 2798072	       130.4 ns/op	         0 syncs/op	         1.000 writes/op	     128 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-evict/capacity=16             	 2923290	       124.7 ns/op	         0 syncs/op	         1.000 writes/op	     128 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-evict/capacity=16             	 2444618	       128.1 ns/op	         0 syncs/op	         1.000 writes/op	     128 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-evict/capacity=16-4           	 3770462	       113.4 ns/op	         0 syncs/op	         1.000 writes/op	     128 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-evict/capacity=16-4           	 3966120	        90.07 ns/op	         0 syncs/op	         1.000 writes/op	     128 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-evict/capacity=16-4           	 4006132	        89.81 ns/op	         0 syncs/op	         1.000 writes/op	     128 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-delete-cycle/capacity=16      	 2878915	       134.9 ns/op	         0 syncs/op	         2.000 writes/op	     176 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-delete-cycle/capacity=16      	 2762104	       126.1 ns/op	         0 syncs/op	         2.000 writes/op	     176 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-delete-cycle/capacity=16      	 2812747	       139.9 ns/op	         0 syncs/op	         2.000 writes/op	     176 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-delete-cycle/capacity=16-4    	 3773790	        88.53 ns/op	         0 syncs/op	         2.000 writes/op	     176 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-delete-cycle/capacity=16-4    	 3986445	        90.23 ns/op	         0 syncs/op	         2.000 writes/op	     176 B/op	       3 allocs/op
+BenchmarkPersistence/memory/set-delete-cycle/capacity=16-4    	 4077548	        89.86 ns/op	         0 syncs/op	         2.000 writes/op	     176 B/op	       3 allocs/op
+BenchmarkPersistence/memory/parallel-set-update/capacity=16   	12888538	        28.05 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/parallel-set-update/capacity=16   	13020400	        35.59 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/parallel-set-update/capacity=16   	 9629218	        32.11 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/parallel-set-update/capacity=16-4 	 2576347	       137.0 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/parallel-set-update/capacity=16-4 	 2518634	       138.4 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/memory/parallel-set-update/capacity=16-4 	 2541547	       137.9 ns/op	         0 syncs/op	         1.000 writes/op	       0 B/op	       0 allocs/op
+BenchmarkPersistence/aof-sync/set-update/capacity=16          	     100	   3824091 ns/op	         1.000 syncs/op	         1.000 writes/op	     648 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/set-update/capacity=16          	     100	   3519845 ns/op	         1.000 syncs/op	         1.000 writes/op	     648 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/set-update/capacity=16          	     100	   5784942 ns/op	         1.000 syncs/op	         1.000 writes/op	     648 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/set-update/capacity=16-4        	     100	   3135079 ns/op	         1.000 syncs/op	         1.000 writes/op	     648 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/set-update/capacity=16-4        	     100	   3015645 ns/op	         1.000 syncs/op	         1.000 writes/op	     648 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/set-update/capacity=16-4        	     100	   3035563 ns/op	         1.000 syncs/op	         1.000 writes/op	     648 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/set-evict/capacity=16           	     126	   3140941 ns/op	         1.000 syncs/op	         1.000 writes/op	    1160 B/op	      18 allocs/op
+BenchmarkPersistence/aof-sync/set-evict/capacity=16           	     127	   2934792 ns/op	         1.000 syncs/op	         1.000 writes/op	    1160 B/op	      18 allocs/op
+BenchmarkPersistence/aof-sync/set-evict/capacity=16           	     100	   4911114 ns/op	         1.000 syncs/op	         1.000 writes/op	    1160 B/op	      18 allocs/op
+BenchmarkPersistence/aof-sync/set-evict/capacity=16-4         	      86	   3603227 ns/op	         1.000 syncs/op	         1.000 writes/op	    1160 B/op	      18 allocs/op
+BenchmarkPersistence/aof-sync/set-evict/capacity=16-4         	      84	   4685436 ns/op	         1.000 syncs/op	         1.000 writes/op	    1160 B/op	      18 allocs/op
+BenchmarkPersistence/aof-sync/set-evict/capacity=16-4         	      97	   4444848 ns/op	         1.000 syncs/op	         1.000 writes/op	    1160 B/op	      18 allocs/op
+BenchmarkPersistence/aof-sync/set-delete-cycle/capacity=16    	      81	   7726988 ns/op	         2.000 syncs/op	         2.000 writes/op	    1334 B/op	      21 allocs/op
+BenchmarkPersistence/aof-sync/set-delete-cycle/capacity=16    	      60	   6519112 ns/op	         2.000 syncs/op	         2.000 writes/op	    1283 B/op	      21 allocs/op
+BenchmarkPersistence/aof-sync/set-delete-cycle/capacity=16    	      45	   7415563 ns/op	         2.000 syncs/op	         2.000 writes/op	    1217 B/op	      21 allocs/op
+BenchmarkPersistence/aof-sync/set-delete-cycle/capacity=16-4  	      60	   8371890 ns/op	         2.000 syncs/op	         2.000 writes/op	    1283 B/op	      21 allocs/op
+BenchmarkPersistence/aof-sync/set-delete-cycle/capacity=16-4  	      54	   6803134 ns/op	         2.000 syncs/op	         2.000 writes/op	    1261 B/op	      21 allocs/op
+BenchmarkPersistence/aof-sync/set-delete-cycle/capacity=16-4  	      99	   6185250 ns/op	         2.000 syncs/op	         2.000 writes/op	    1360 B/op	      21 allocs/op
+BenchmarkPersistence/aof-sync/parallel-set-update/capacity=16           	     100	   3187594 ns/op	         1.000 syncs/op	         1.000 writes/op	     650 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/parallel-set-update/capacity=16           	     100	   3104578 ns/op	         1.000 syncs/op	         1.000 writes/op	     650 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/parallel-set-update/capacity=16           	     120	   3083108 ns/op	         1.000 syncs/op	         1.000 writes/op	     690 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/parallel-set-update/capacity=16-4         	     104	   3106995 ns/op	         1.000 syncs/op	         1.000 writes/op	     720 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/parallel-set-update/capacity=16-4         	     100	   6056666 ns/op	         1.000 syncs/op	         1.000 writes/op	     720 B/op	      10 allocs/op
+BenchmarkPersistence/aof-sync/parallel-set-update/capacity=16-4         	     100	   5587090 ns/op	         1.000 syncs/op	         1.000 writes/op	     691 B/op	      10 allocs/op
+PASS
+ok  	github.com/ajit-66549/distributed-cache/internal/cache	124.551s
